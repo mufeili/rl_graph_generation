@@ -6,6 +6,7 @@ from baselines import logger
 from tensorboardX import SummaryWriter
 import os
 import tensorflow as tf
+import time
 
 import gym
 from gym_molecule.envs.molecule import GraphEnv
@@ -111,6 +112,16 @@ def molecule_arg_parser():
 
     return parser
 
+def log_time(time):
+    day = time // (24 * 3600)
+    time %= (24 * 3600)
+    hour = time // 3600
+    time %= 3600
+    minutes = time // 60
+    time %= 60
+    seconds = time
+    print("d:h:m:s-> %d:%d:%d:%d" % (day, hour, minutes, seconds))
+
 def main():
     args = molecule_arg_parser().parse_args()
     print(args)
@@ -127,7 +138,11 @@ def main():
         writer = SummaryWriter(comment='_'+args.dataset+'_'+args.name)
     else:
         writer = None
+
+    t_start = time.time()
     train(args,seed=args.seed,writer=writer)
+    t_end = time.time()
+    log_time(t_end - t_start)
 
 if __name__ == '__main__':
     main()
