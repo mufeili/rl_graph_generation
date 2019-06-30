@@ -6,14 +6,11 @@ from rdkit.Chem import AllChem
 from rdkit.Chem.Descriptors import qed, MolLogP
 from rdkit.Chem import rdMolDescriptors
 from rdkit.Chem.FilterCatalog import FilterCatalogParams, FilterCatalog
-# import gym_molecule
 import copy
 import networkx as nx
 from gym_molecule.envs.sascorer import calculateScore
 from gym_molecule.dataset.dataset_utils import gdb_dataset,mol_to_nx,nx_to_mol
 import random
-import time
-import matplotlib.pyplot as plt
 import csv
 
 from contextlib import contextmanager
@@ -62,9 +59,6 @@ def load_scaffold():
         print('num of scaffolds:', len(data))
         return data
 
-
-
-
 def load_conditional(type='low'):
     if type=='low':
         cwd = os.path.dirname(__file__)
@@ -79,17 +73,14 @@ def load_conditional(type='low'):
     elif type=='high':
         cwd = os.path.dirname(__file__)
         path = os.path.join(os.path.dirname(cwd), 'dataset',
-                            'zinc_plogp_sorted.csv')
+                            'opt.test.logP-SA')
         import csv
         with open(path, 'r') as fp:
             reader = csv.reader(fp, delimiter=',', quotechar='"')
-            data = [[row[1], row[0],id] for id, row in enumerate(reader)]
+            data = [[row[1], row[0], id] for id, row in enumerate(reader)]
             # data = [row for id, row in enumerate(reader)]
             data = data[0:800]
     return data
-# data = load_conditional('low')
-# data = load_conditional('high')
-# print(data[799])
 
 
 class MoleculeEnv(gym.Env):
@@ -116,14 +107,13 @@ class MoleculeEnv(gym.Env):
         else:
             self.mol = Chem.RWMol()
         self.smile_list = []
-        if data_type=='gdb':
-            possible_atoms = ['C', 'N', 'O', 'S', 'Cl'] # gdb 13
-        elif data_type=='zinc':
+
+        if data_type=='zinc':
             possible_atoms = ['C', 'N', 'O', 'S', 'P', 'F', 'I', 'Cl',
                               'Br']  # ZINC
         if self.has_feature:
             self.possible_formal_charge = np.array([-1, 0, 1])
-            self.possible_implicit_valence = np.array([-1,0, 1, 2, 3, 4])
+            self.possible_implicit_valence = np.array([-1, 0, 1, 2, 3, 4])
             self.possible_ring_atom = np.array([True, False])
             self.possible_degree = np.array([0, 1, 2, 3, 4, 5, 6, 7])
             self.possible_hybridization = np.array([
@@ -150,9 +140,7 @@ class MoleculeEnv(gym.Env):
 
         self.max_action = max_action
         self.min_action = min_action
-        if data_type=='gdb':
-            self.max_atom = 13 + len(possible_atoms) # gdb 13
-        elif data_type=='zinc':
+        if data_type=='zinc':
             if self.is_conditional:
                 self.max_atom = 38 + len(possible_atoms) + self.min_action # ZINC
             else:
@@ -171,10 +159,7 @@ class MoleculeEnv(gym.Env):
 
         ## load expert data
         cwd = os.path.dirname(__file__)
-        if data_type=='gdb':
-            path = os.path.join(os.path.dirname(cwd), 'dataset',
-                                'gdb13.rand1M.smi.gz')  # gdb 13
-        elif data_type=='zinc':
+        if data_type=='zinc':
             path = os.path.join(os.path.dirname(cwd), 'dataset',
                                 '250k_rndm_zinc_drugs_clean_sorted.smi')  # ZINC
         self.dataset = gdb_dataset(path)
@@ -238,7 +223,7 @@ class MoleculeEnv(gym.Env):
                 reward_step = self.reward_step_total/self.max_atom # successfully add node/edge
                 self.smile_list.append(self.get_final_smiles())
             else:
-                reward_step = -self.reward_step_total/self.max_atom # edge exist
+                reward_step = - self.reward_step_total/self.max_atom # edge exist
         else:
             reward_step = -self.reward_step_total/self.max_atom  # invalid action
             self.mol = self.mol_old
@@ -388,7 +373,6 @@ class MoleculeEnv(gym.Env):
 
     def _add_bond(self, action):
         '''
-
         :param action: [first_node, second_node, bong_type_id]
         :return:
         '''
@@ -634,7 +618,6 @@ class MoleculeEnv(gym.Env):
         dataset_len = len(self.dataset)
         for i in range(batch_size):
             is_final_temp = is_final
-            # print('--------------------------------------------------')
             ### get a subgraph
             if curriculum==1:
                 ratio_start = level/float(level_total)
@@ -643,22 +626,14 @@ class MoleculeEnv(gym.Env):
             else:
                 idx = np.random.randint(0, dataset_len)
             mol = self.dataset[idx]
-            # print('ob_before',Chem.MolToSmiles(mol, isomericSmiles=True))
-            # from rdkit.Chem import Draw
-            # Draw.MolToFile(mol, 'ob_before'+str(i)+'.png')
-            # mol = self.dataset[i] # sanitity check
             Chem.SanitizeMol(mol,sanitizeOps=Chem.SanitizeFlags.SANITIZE_KEKULIZE)
             graph = mol_to_nx(mol)
             edges = graph.edges()
-            # # always involve is_final probability
-            # if is_final==False and np.random.rand()<1.0/batch_size:
-            #     is_final = True
 
             # select the edge num for the subgraph
             if is_final_temp:
                 edges_sub_len = len(edges)
             else:
-                # edges_sub_len = random.randint(1,len(edges))
                 edges_sub_len = random.randint(1,len(edges)+1)
                 if edges_sub_len==len(edges)+1:
                     edges_sub_len = len(edges)
@@ -696,27 +671,10 @@ class MoleculeEnv(gym.Env):
                     print('Expert policy error!')
                 edge_type = np.argmax(graph[edge_sample[0]][edge_sample[1]]['bond_type'] == self.possible_bond_types)
                 ac[i,:] = [node1,node2,edge_type,0] # don't stop
-                # print('action',[node1,node2,edge_type,0])
-            # print('action',ac)
-            # plt.axis("off")
-            # nx.draw_networkx(graph_sub)
-            # plt.show()
-            ### get observation
-            # rw_mol = Chem.RWMol()
+
             n = graph_sub.number_of_nodes()
             for node_id, node in enumerate(graph_sub.nodes()):
                 if self.has_feature:
-                    # float_array = np.concatenate([(graph.node[node]['symbol'] ==
-                    #                                self.possible_atom_types),
-                    #                               (graph.node[node]['formal_charge'] ==
-                    #                                self.possible_formal_charge),
-                    #                               (graph.node[node]['implicit_valence'] ==
-                    #                                self.possible_implicit_valence),
-                    #                               (graph.node[node]['ring_atom'] ==
-                    #                                self.possible_ring_atom),
-                    #                               (graph.node[node]['degree'] == self.possible_degree),
-                    #                               (graph.node[node]['hybridization'] ==
-                    #                                self.possible_hybridization)]).astype(float)
                     cycle_info = nx.cycle_basis(graph_sub, node)
                     cycle_len_info = [len(cycle) for cycle in cycle_info]
                     # print(cycle_len_info)
@@ -734,12 +692,7 @@ class MoleculeEnv(gym.Env):
                                                    )]).astype(float)
                 else:
                     float_array = (graph.node[node]['symbol'] == self.possible_atom_types).astype(float)
-
-                # assert float_array.sum() == 6
                 ob['node'][i, 0, node_id, :] = float_array
-                # print('node',node_id,graph.node[node]['symbol'])
-                # atom = Chem.Atom(graph.node[node]['symbol'])
-                # rw_mol.AddAtom(atom)
             auxiliary_atom_features = np.zeros((atom_type_num, self.d_n))  # for padding
             temp = np.eye(atom_type_num)
             auxiliary_atom_features[:temp.shape[0], :temp.shape[1]] = temp
@@ -755,361 +708,10 @@ class MoleculeEnv(gym.Env):
                 assert float_array.sum() != 0
                 ob['adj'][i, :, begin_idx, end_idx] = float_array
                 ob['adj'][i, :, end_idx, begin_idx] = float_array
-                # print('edge',begin_idx,end_idx,bond_type)
-                # rw_mol.AddBond(begin_idx, end_idx, order=bond_type)
             if self.is_normalize:
                 ob['adj'][i] = self.normalize_adj(ob['adj'][i])
-            # print('ob',Chem.MolToSmiles(rw_mol, isomericSmiles=True))
-            # from rdkit.Chem import Draw
-            # Draw.MolToFile(rw_mol, 'ob' + str(i) + '.png')
 
         return ob,ac
-
-
-
-
-
-
-
-
-
-## below are for general graph generation env
-
-def caveman_special(c=2,k=20,p_path=0.1,p_edge=0.3):
-    p = p_path
-    path_count = max(int(np.ceil(p * k)),1)
-    G = nx.caveman_graph(c, k)
-    # remove 50% edges
-    p = 1-p_edge
-    for (u, v) in list(G.edges()):
-        if np.random.rand() < p and ((u < k and v < k) or (u >= k and v >= k)):
-            G.remove_edge(u, v)
-    # add path_count links
-    for i in range(path_count):
-        u = np.random.randint(0, k)
-        v = np.random.randint(k, k * 2)
-        G.add_edge(u, v)
-    G = max(nx.connected_component_subgraphs(G), key=len)
-    return G
-
-
-class GraphEnv(gym.Env):
-    """
-    Environment for a general graph
-    """
-    def __init__(self):
-        pass
-    def init(self, reward_step_total=1, is_normalize=0,dataset='ba'):
-        '''
-        own init function, since gym does not support passing argument
-        '''
-        self.is_normalize = bool(is_normalize)
-        self.graph = nx.Graph()
-        self.reward_step_total = reward_step_total
-
-
-        self.counter = 0
-
-        ## load expert data
-        if dataset == 'caveman':
-            self.dataset = []
-            for i in range(2, 3):
-                for j in range(6, 11):
-                    for k in range(20):
-                        self.dataset.append(caveman_special(i, j, p_edge=0.8))  # default 0.8
-            self.max_node = 25
-            self.max_action = 150
-        elif dataset == 'grid':
-            self.dataset = []
-            for i in range(2, 5):
-                for j in range(2, 6):
-                    self.dataset.append(nx.grid_2d_graph(i, j))
-            self.max_node = 25
-            self.max_action = 100
-        else:
-            print('default dataset: barabasi')
-            self.dataset = []
-            for i in range(4, 21):
-                for j in range(3, 4):
-                    for k in range(10):
-                        self.dataset.append(nx.barabasi_albert_graph(i, j))
-            self.max_node = 25
-            self.max_action = 150
-
-        self.action_space = gym.spaces.MultiDiscrete([self.max_node, self.max_node, 3, 2])
-        self.observation_space = {}
-        self.observation_space['adj'] = gym.Space(shape=[1, self.max_node, self.max_node])
-        self.observation_space['node'] = gym.Space(shape=[1, self.max_node, 1])
-
-        self.level = 0  # for curriculum learning, level starts with 0, and increase afterwards
-
-        # compatible with molecule env
-        self.max_atom = self.max_node
-        self.atom_type_num = 1
-
-    def level_up(self):
-        self.level += 1
-
-    def normalize_adj(self, adj):
-        degrees = np.sum(adj, axis=2)
-        # print('degrees',degrees)
-        D = np.zeros((adj.shape[0], adj.shape[1], adj.shape[2]))
-        for i in range(D.shape[0]):
-            D[i, :, :] = np.diag(np.power(degrees[i, :], -0.5))
-        adj_normal = D @ adj @ D
-        adj_normal[np.isnan(adj_normal)] = 0
-        return adj_normal
-
-    # TODO(Bowen): check
-    def step(self, action):
-        """
-
-        :param action:
-        :return:
-        """
-        ### init
-        info = {}  # info we care about
-        self.graph_old = copy.deepcopy(self.graph)
-        total_nodes = self.graph.number_of_nodes()
-
-        ### take action
-        if action[0, 3] == 0:   # not stop
-            stop = False
-            if action[0, 1] >= total_nodes:
-                self.graph.add_node(int(action[0, 1]))
-                self._add_edge(action)
-            else:
-                self._add_edge(action)  # add new edge
-        else:   # stop
-            stop = True
-
-        ### calculate intermediate rewards
-        # todo: add neccessary rules for the task
-        if self.graph.number_of_nodes() + self.graph.number_of_edges()-self.graph_old.number_of_nodes() - \
-            self.graph_old.number_of_edges() > 0:
-            reward_step = self.reward_step_total / self.max_node
-            # successfully added node/edge
-        else:
-            reward_step = -self.reward_step_total / self.max_node # edge
-            self.graph = self.graph_old
-            # already exists
-
-        ### calculate and use terminal reward
-        if self.graph.number_of_nodes() >= self.max_node - 1 or self.counter >= self.max_action or stop:
-
-            # property rewards
-            ## todo: add property reward
-            reward_terminal = 1 # arbitrary choice
-
-            new = True  # end of episode
-            reward = reward_step + reward_terminal
-
-            # print terminal graph information
-            info['final_stat'] = reward_terminal
-            info['reward'] = reward
-            info['stop'] = stop
-        ### use stepwise reward
-        else:
-            new = False
-            reward = reward_step
-
-        # get observation
-        ob = self.get_observation()
-
-        self.counter += 1
-        if new:
-            self.counter = 0
-
-        return ob, reward, new, info
-
-    def reset(self):
-        """
-        to avoid error, assume a node already exists
-        :return: ob
-        """
-        self.graph.clear()
-        self.graph.add_node(0)
-        self.counter = 0
-        ob = self.get_observation()
-        return ob
-
-    # TODO(Bowen): is this necessary
-    def render(self, mode='human', close=False):
-        return
-
-    # TODO(Bowen): check
-    def _add_node(self):
-        """
-
-        :param node_type_id:
-        :return:
-        """
-        new_node_idx = self.graph.number_of_nodes()
-        self.graph.add_node(new_node_idx)
-
-    # TODO(Bowen): check
-    def _add_edge(self, action):
-        """
-
-        :param action: [first_node, second_node, edge_type_id]
-        :return:
-        """
-
-        if self.graph.has_edge(int(action[0,0]), int(action[0,1])) or int(action[0,0])==int(action[0,1]):
-            return False
-        else:
-            self.graph.add_edge(int(action[0,0]), int(action[0,1]))
-            return True
-
-    def get_final_graph(self):
-        return self.graph
-
-    # TODO(Bowen): check [for featured graph]
-    # def get_observation(self):
-    #     """
-    #
-    #     :return: ob, where ob['adj'] is E with dim b x n x n and ob['node']
-    #     is F with dim 1 x n x m. NB: n = node_num + node_type_num
-    #     """
-    #     n = self.graph.number_of_nodes()
-    #     n_shift = len(self.possible_node_types)  # assume isolated nodes new nodes exist
-    #
-    #     d_n = len(self.possible_node_types)
-    #     F = np.zeros((1, self.max_node, d_n))
-    #
-    #     for node in self.graph.nodes_iter(data=True):
-    #         node_idx = node[0]
-    #         node_type = node[1]['type']
-    #         float_array = (node_type == self.possible_node_types).astype(float)
-    #         assert float_array.sum() != 0
-    #         F[0, node_idx, :] = float_array
-    #     temp = F[0, n:n + n_shift, :]
-    #     F[0, n:n + n_shift, :] = np.eye(n_shift)
-    #
-    #     d_e = len(self.possible_edge_types)
-    #     E = np.zeros((d_e, self.max_node, self.max_node))
-    #     for i in range(d_e):
-    #         E[i, :n + n_shift, :n + n_shift] = np.eye(n + n_shift)
-    #     for e in self.graph.edges_iter(data=True):
-    #         begin_idx = e[0]
-    #         end_idx = e[1]
-    #         edge_type = e[2]['type']
-    #         float_array = (edge_type == self.possible_edge_types).astype(float)
-    #         assert float_array.sum() != 0
-    #         E[:, begin_idx, end_idx] = float_array
-    #         E[:, end_idx, begin_idx] = float_array
-    #     ob = {}
-    #     if self.is_normalize:
-    #         E = self.normalize_adj(E)
-    #     ob['adj'] = E
-    #     ob['node'] = F
-    #     return ob
-
-
-    # for graphs without features
-    def get_observation(self,feature='deg'):
-        """
-
-        :return: ob, where ob['adj'] is E with dim b x n x n and ob['node']
-        is F with dim 1 x n x m. NB: n = node_num + node_type_num
-        """
-        n = self.graph.number_of_nodes()
-        F = np.zeros((1, self.max_node, 1))
-        F[0,:n+1,0] = 1
-
-        E = np.zeros((1, self.max_node, self.max_node))
-        E[0,:n,:n] = np.asarray(nx.to_numpy_matrix(self.graph))[np.newaxis,:,:]
-        E[0,:n+1,:n+1] += np.eye(n+1)
-
-        ob = {}
-        if self.is_normalize:
-            E = self.normalize_adj(E)
-        ob['adj'] = E
-        ob['node'] = F
-        return ob
-
-    def get_expert(self, batch_size, is_final=False, curriculum=0,
-                   level_total=6, level=0):
-        ob = {}
-        ob['node'] = np.zeros((batch_size, 1, self.max_node, 1))
-        ob['adj'] = np.zeros((batch_size, 1, self.max_node, self.max_node))
-
-        ac = np.zeros((batch_size, 4))
-        ### select graph
-        dataset_len = len(self.dataset)
-        for i in range(batch_size):
-            ### get a subgraph
-            if curriculum == 1:
-                ratio_start = level / float(level_total)
-                ratio_end = (level + 1) / float(level_total)
-                idx = np.random.randint(int(ratio_start * dataset_len),
-                                        int(ratio_end * dataset_len))
-            else:
-                idx = np.random.randint(0, dataset_len)
-            graph = self.dataset[idx]
-            edges = graph.edges()
-            # select the edge num for the subgraph
-            if is_final:
-                edges_sub_len = len(edges)
-            else:
-                edges_sub_len = random.randint(1, len(edges))
-            edges_sub = random.sample(edges, k=edges_sub_len)
-            graph_sub = nx.Graph(edges_sub)
-            graph_sub = max(nx.connected_component_subgraphs(graph_sub),
-                            key=len)
-            if is_final:  # when the subgraph the whole graph, the expert show
-                # stop sign
-                node1 = random.randint(0, graph.number_of_nodes() - 1)
-                while True:
-                    node2 = random.randint(0,graph.number_of_nodes())
-                    if node2 != node1:
-                        break
-                edge_type = 0
-                ac[i, :] = [node1, node2, edge_type, 1]  # stop
-            else:
-                ### random pick an edge from the subgraph, then remove it
-                edge_sample = random.sample(graph_sub.edges(), k=1)
-                graph_sub.remove_edges_from(edge_sample)
-                graph_sub = max(nx.connected_component_subgraphs(graph_sub),
-                                key=len)
-                edge_sample = edge_sample[0]  # get value
-                ### get action
-                if edge_sample[0] in graph_sub.nodes() and edge_sample[
-                    1] in graph_sub.nodes():
-                    node1 = graph_sub.nodes().index(edge_sample[0])
-                    node2 = graph_sub.nodes().index(edge_sample[1])
-                elif edge_sample[0] in graph_sub.nodes():
-                    node1 = graph_sub.nodes().index(edge_sample[0])
-                    node2 = graph_sub.number_of_nodes()
-                elif edge_sample[1] in graph_sub.nodes():
-                    node1 = graph_sub.nodes().index(edge_sample[1])
-                    node2 = graph_sub.number_of_nodes()
-                else:
-                    print('Expert policy error!')
-                edge_type = 0
-                ac[i, :] = [node1, node2, edge_type, 0]  # don't stop
-                # print('action',[node1,node2,edge_type,0])
-            # print('action',ac)
-            # plt.axis("off")
-            # nx.draw_networkx(graph_sub)
-            # plt.show()
-            ### get observation
-            n = graph_sub.number_of_nodes()
-            F = np.zeros((1, self.max_node, 1))
-            F[0, :n + 1, 0] = 1
-            if self.is_normalize:
-                ob['adj'][i] = self.normalize_adj(F)
-            else:
-                ob['node'][i]=F
-            # print(F)
-            E = np.zeros((1, self.max_node, self.max_node))
-            E[0, :n, :n] = np.asarray(nx.to_numpy_matrix(graph_sub))[np.newaxis, :, :]
-            E[0, :n + 1, :n + 1] += np.eye(n + 1)
-            ob['adj'][i]=E
-            # print(E)
-
-        return ob, ac
-
 
 ### YES/NO filters ###
 def zinc_molecule_filter(mol):
@@ -1245,8 +847,6 @@ def steric_strain_filter(mol, cutoff=0.82,
         return True
     else:
         return False
-
-
 
 ### TARGET VALUE REWARDS ###
 
@@ -1440,402 +1040,13 @@ def get_normalized_values():
         logP_values), np.std(logP_values), np.mean(
         cycle_scores), np.std(cycle_scores)
 
-
-
-
 # smile = 'C'*38
 smile = 'CCCCCCCCCC(CCC)(CCCCCCC)CCCCCCCCC(CCCCC)CC(C)C'
 print(smile, reward_penalized_log_p(Chem.MolFromSmiles(smile)))
 
 if __name__ == '__main__':
     env = gym.make('molecule-v0') # in gym format
-    # env = GraphEnv()
-    # env.init(has_scaffold=True)
 
     ## debug
     m_env = MoleculeEnv()
     m_env.init(data_type='zinc',has_feature=True,is_conditional=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-######### GraphEnv potentially with feature
-# class GraphEnv(gym.Env):
-#     """
-#     Environment for a general graph
-#     """
-#     def __init__(self):
-#         pass
-#     # TODO(Bowen): check
-#     def init(self, data_type='simple', reward_step_total=1, is_normalize=0):
-#         '''
-#         own init function, since gym does not support passing argument
-#         '''
-#         self.is_normalize = bool(is_normalize)
-#         self.graph = nx.Graph()
-#         if data_type == 'simple':
-#             possible_nodes = ['n']
-#             possible_edges = ['e']
-#             self.max_node = 100 + len(possible_nodes)
-#         else:
-#             raise ValueError('Invalid data type')
-#         self.node_type_num = len(possible_nodes)
-#         self.possible_node_types = np.array(possible_nodes)
-#         self.possible_edge_types = np.array(possible_edges)
-#
-#         self.max_action = 128
-#         self.reward_step_total = reward_step_total
-#         self.action_space = gym.spaces.MultiDiscrete([self.max_node, self.max_node, 3, 2])
-#         self.observation_space = {}
-#         self.observation_space['adj'] = gym.Space(shape=[len(possible_edges),
-#                                                          self.max_node,
-#                                                          self.max_node])
-#         self.observation_space['node'] = gym.Space(shape=[1, self.max_node,
-#                                                           len(possible_nodes)])
-#
-#         self.counter = 0
-#
-#         ## load expert data
-#         cwd = os.path.dirname(__file__)
-#         # if data_type == 'simple':
-#         #     path = os.path.join(os.path.dirname(cwd), 'dataset',
-#         #                         'simple')  #TODO: Add a suitable dataset
-#         # self.dataset = dataset(path)    #TODO: Add a suitable dataset loader
-#         if data_type == 'simple':
-#             self.dataset = [nx.barabasi_albert_graph(100,2) for i in range(200)]
-#
-#
-#         self.level = 0  # for curriculum learning, level starts with 0, and increase afterwards
-#
-#     def level_up(self):
-#         self.level += 1
-#
-#     def normalize_adj(self, adj):
-#         degrees = np.sum(adj, axis=2)
-#         # print('degrees',degrees)
-#         D = np.zeros((adj.shape[0], adj.shape[1], adj.shape[2]))
-#         for i in range(D.shape[0]):
-#             D[i, :, :] = np.diag(np.power(degrees[i, :], -0.5))
-#         adj_normal = D @ adj @ D
-#         adj_normal[np.isnan(adj_normal)] = 0
-#         return adj_normal
-#
-#     # TODO(Bowen): check
-#     def step(self, action):
-#         """
-#
-#         :param action:
-#         :return:
-#         """
-#         ### init
-#         info = {}  # info we care about
-#         self.graph_old = copy.deepcopy(self.graph)
-#         total_nodes = self.graph.number_of_nodes()
-#
-#         ### take action
-#         if action[0, 3] == 0:   # not stop
-#             stop = False
-#             if action[0, 1] >= total_nodes:
-#                 self._add_node(action[0, 1] - total_nodes)  # add new node
-#                 action[0, 1] = total_nodes  # new node id
-#                 self._add_edge(action)  # add new edge
-#             else:
-#                 self._add_edge(action)  # add new edge
-#         else:   # stop
-#             stop = True
-#
-#         ### calculate intermediate rewards
-#         if self.graph.number_of_nodes() + self.graph.number_of_edges() - \
-#             self.graph_old.number_of_nodes() - \
-#             self.graph_old.number_of_edges() > 0:
-#             reward_step = self.reward_step_total / self.max_node
-#             # successfully added node/edge
-#         else:
-#             reward_step = -self.reward_step_total / self.max_node # edge
-#             # already exists
-#
-#         ### calculate and use terminal reward
-#         if self.graph.number_of_nodes() >= self.max_node - \
-#             self.possible_node_types.shape[0] or self.counter >= \
-#             self.max_action or stop:
-#
-#             # property rewards
-#             reward_terminal = 1 # arbitrary choice
-#
-#             new = True  # end of episode
-#             reward = reward_step + reward_terminal
-#
-#             # print terminal graph information
-#             info['reward_terminal'] = reward_terminal
-#             info['reward'] = reward
-#             info['stop'] = stop
-#         ### use stepwise reward
-#         else:
-#             new = False
-#             reward = reward_step
-#
-#         # get observation
-#         ob = self.get_observation()
-#
-#         self.counter += 1
-#         if new:
-#             self.counter = 0
-#
-#         return ob, reward, new, info
-#
-#     def reset(self):
-#         """
-#         to avoid error, assume a node already exists
-#         :return: ob
-#         """
-#         self.graph.clear()
-#         self._add_node(0)
-#         self.counter = 0
-#         ob = self.get_observation()
-#         return ob
-#
-#     # TODO(Bowen): is this necessary
-#     def render(self, mode='human', close=False):
-#         return
-#
-#     # TODO(Bowen): check
-#     def _add_node(self, node_type_id):
-#         """
-#
-#         :param node_type_id:
-#         :return:
-#         """
-#         new_node_idx = self.graph.number_of_nodes()
-#         self.graph.add_node(new_node_idx, type=self.possible_node_types[node_type_id])
-#
-#     # TODO(Bowen): check
-#     def _add_edge(self, action):
-#         """
-#
-#         :param action: [first_node, second_node, edge_type_id]
-#         :return:
-#         """
-#         edge_type = self.possible_edge_types[action[0, 2]]
-#
-#         if self.graph.has_edge(int(action[0,0]), int(action[0,1])):
-#             return False
-#         else:
-#             self.graph.add_edge(int(action[0,0]), int(action[0,1]), type=edge_type)
-#             return True
-#
-#     def get_final_graph(self):
-#         return self.graph
-#
-#     # TODO(Bowen): check [for featured graph]
-#     # def get_observation(self):
-#     #     """
-#     #
-#     #     :return: ob, where ob['adj'] is E with dim b x n x n and ob['node']
-#     #     is F with dim 1 x n x m. NB: n = node_num + node_type_num
-#     #     """
-#     #     n = self.graph.number_of_nodes()
-#     #     n_shift = len(self.possible_node_types)  # assume isolated nodes new nodes exist
-#     #
-#     #     d_n = len(self.possible_node_types)
-#     #     F = np.zeros((1, self.max_node, d_n))
-#     #
-#     #     for node in self.graph.nodes_iter(data=True):
-#     #         node_idx = node[0]
-#     #         node_type = node[1]['type']
-#     #         float_array = (node_type == self.possible_node_types).astype(float)
-#     #         assert float_array.sum() != 0
-#     #         F[0, node_idx, :] = float_array
-#     #     temp = F[0, n:n + n_shift, :]
-#     #     F[0, n:n + n_shift, :] = np.eye(n_shift)
-#     #
-#     #     d_e = len(self.possible_edge_types)
-#     #     E = np.zeros((d_e, self.max_node, self.max_node))
-#     #     for i in range(d_e):
-#     #         E[i, :n + n_shift, :n + n_shift] = np.eye(n + n_shift)
-#     #     for e in self.graph.edges_iter(data=True):
-#     #         begin_idx = e[0]
-#     #         end_idx = e[1]
-#     #         edge_type = e[2]['type']
-#     #         float_array = (edge_type == self.possible_edge_types).astype(float)
-#     #         assert float_array.sum() != 0
-#     #         E[:, begin_idx, end_idx] = float_array
-#     #         E[:, end_idx, begin_idx] = float_array
-#     #     ob = {}
-#     #     if self.is_normalize:
-#     #         E = self.normalize_adj(E)
-#     #     ob['adj'] = E
-#     #     ob['node'] = F
-#     #     return ob
-#
-#
-#     # for graphs without features
-#     def get_observation(self,feature='deg'):
-#         """
-#
-#         :return: ob, where ob['adj'] is E with dim b x n x n and ob['node']
-#         is F with dim 1 x n x m. NB: n = node_num + node_type_num
-#         """
-#         n = self.graph.number_of_nodes()
-#         F = np.zeros((1, self.max_node, 1))
-#         F[0,:n+1,0] = 1
-#
-#         E = np.zeros((1, self.max_node, self.max_node))
-#         E[0,:n,:n] = np.asarray(nx.to_numpy_matrix(self.graph))[np.newaxis,:,:]
-#         E[0,:n+1,:n+1] += np.eye(n+1)
-#
-#         ob = {}
-#         if self.is_normalize:
-#             E = self.normalize_adj(E)
-#         ob['adj'] = E
-#         ob['node'] = F
-#         return ob
-#
-#     def get_expert(self, batch_size, is_final=False, curriculum=0,
-#                    level_total=6, level=0):
-#         ob = {}
-#         node_type_num = len(self.possible_node_types)
-#         edge_type_num = len(self.possible_edge_types)
-#         ob['node'] = np.zeros((batch_size, 1, self.max_node, node_type_num))
-#         ob['adj'] = np.zeros(
-#             (batch_size, edge_type_num, self.max_node, self.max_node))
-#
-#         ac = np.zeros((batch_size, 4))
-#         ### select graph
-#         dataset_len = len(self.dataset)
-#         for i in range(batch_size):
-#             # print('--------------------------------------------------')
-#             ### get a subgraph
-#             if curriculum == 1:
-#                 ratio_start = level / float(level_total)
-#                 ratio_end = (level + 1) / float(level_total)
-#                 idx = np.random.randint(int(ratio_start * dataset_len),
-#                                         int(ratio_end * dataset_len))
-#             else:
-#                 idx = np.random.randint(0, dataset_len)
-#             graph = self.dataset[idx]
-#             edges = graph.edges()
-#             # select the edge num for the subgraph
-#             if is_final:
-#                 edges_sub_len = len(edges)
-#             else:
-#                 edges_sub_len = random.randint(1, len(edges))
-#             edges_sub = random.sample(edges, k=edges_sub_len)
-#             graph_sub = nx.Graph(edges_sub)
-#             graph_sub = max(nx.connected_component_subgraphs(graph_sub),
-#                             key=len)
-#             if is_final:  # when the subgraph the whole graph, the expert show
-#                 # stop sign
-#                 node1 = random.randint(0, graph.number_of_nodes() - 1)
-#                 while True:
-#                     node2 = random.randint(0,
-#                                            graph.number_of_nodes() + node_type_num - 1)
-#                     if node2 != node1:
-#                         break
-#                 edge_type = random.randint(0, edge_type_num - 1)
-#                 ac[i, :] = [node1, node2, edge_type, 1]  # stop
-#             else:
-#                 ### random pick an edge from the subgraph, then remove it
-#                 edge_sample = random.sample(graph_sub.edges(), k=1)
-#                 graph_sub.remove_edges_from(edge_sample)
-#                 graph_sub = max(nx.connected_component_subgraphs(graph_sub),
-#                                 key=len)
-#                 edge_sample = edge_sample[0]  # get value
-#                 ### get action
-#                 if edge_sample[0] in graph_sub.nodes() and edge_sample[
-#                     1] in graph_sub.nodes():
-#                     node1 = graph_sub.nodes().index(edge_sample[0])
-#                     node2 = graph_sub.nodes().index(edge_sample[1])
-#                 elif edge_sample[0] in graph_sub.nodes():
-#                     node1 = graph_sub.nodes().index(edge_sample[0])
-#                     node2 = np.argmax(
-#                         graph.node[edge_sample[1]][
-#                             'type'] == self.possible_node_types) + \
-#                             graph_sub.number_of_nodes()
-#                 elif edge_sample[1] in graph_sub.nodes():
-#                     node1 = graph_sub.nodes().index(edge_sample[1])
-#                     node2 = np.argmax(
-#                         graph.node[edge_sample[0]][
-#                             'type'] == self.possible_node_types) + graph_sub.number_of_nodes()
-#                 else:
-#                     print('Expert policy error!')
-#                 edge_type = np.argmax(graph[edge_sample[0]][edge_sample[1]][
-#                                           'type'] == self.possible_edge_types)
-#                 ac[i, :] = [node1, node2, edge_type, 0]  # don't stop
-#                 # print('action',[node1,node2,edge_type,0])
-#             # print('action',ac)
-#             # plt.axis("off")
-#             # nx.draw_networkx(graph_sub)
-#             # plt.show()
-#             ### get observation
-#             n = graph_sub.number_of_nodes()
-#             for node_id, node in enumerate(graph_sub.nodes()):
-#                 float_array = (
-#                 graph.node[node]['type'] == self.possible_node_types).astype(
-#                     float)
-#                 assert float_array.sum() != 0
-#                 ob['node'][i, 0, node_id, :] = float_array
-#             ob['node'][i, 0, n:n + node_type_num, :] = np.eye(node_type_num)
-#
-#             for j in range(edge_type_num):
-#                 ob['adj'][i, j, :n + node_type_num,
-#                 :n + node_type_num] = np.eye(n + node_type_num)
-#             for edge in graph_sub.edges():
-#                 begin_idx = graph_sub.nodes().index(edge[0])
-#                 end_idx = graph_sub.nodes().index(edge[1])
-#                 edge_type = graph[edge[0]][edge[1]]['type']
-#                 float_array = (edge_type == self.possible_edge_types).astype(
-#                     float)
-#                 assert float_array.sum() != 0
-#                 ob['adj'][i, :, begin_idx, end_idx] = float_array
-#                 ob['adj'][i, :, end_idx, begin_idx] = float_array
-#             if self.is_normalize:
-#                 ob['adj'][i] = self.normalize_adj(ob['adj'][i])
-#
-#         return ob, ac
