@@ -100,10 +100,16 @@ class GCNPolicy(object):
         # only when evaluating given action, at training time
         self.ac_real = U.get_placeholder(name='ac_real', dtype=tf.int64, shape=[None,4]) # feed groudtruth action
         ob_node = tf.layers.dense(ob['node'],8,activation=None,use_bias=False,name='emb') # embedding layer
-        emb_node = GCN_batch(ob['adj'], ob_node, args['emb_size'], name='gcn1',aggregate=args['gcn_aggregate'])
-        for i in range(args['layer_num_g'] - 2):
+        if args['bn'] == 1:
+            ob_node = tf.layers.batch_normalization(ob_node, axis=-1)
+        emb_node = GCN_batch(ob['adj'], ob_node, args['emb_size'], name='gcn1', aggregate=args['gcn_aggregate'])
+        if args['bn'] == 1:
+            emb_node = tf.layers.batch_normalization(emb_node, axis=-1)
+        for i in range(args['layer_num_g']-2):
             emb_node = GCN_batch(ob['adj'], emb_node, args['emb_size'], name='gcn1_' + str(i + 1),
                                  aggregate=args['gcn_aggregate'])
+            if args['bn'] == 1:
+                emb_node = tf.layers.batch_normalization(emb_node, axis=-1)
         emb_node = GCN_batch(ob['adj'], emb_node, args['emb_size'], is_act=False, is_normalize=(args['bn'] == 0),
                              name='gcn2',aggregate=args['gcn_aggregate'])
         emb_node = tf.squeeze(emb_node, axis=1)  # B*n*f
