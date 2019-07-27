@@ -59,8 +59,7 @@ def load_conditional(type='low'):
         # print(data[799])
     elif type=='high':
         cwd = os.path.dirname(__file__)
-        path = os.path.join(os.path.dirname(cwd), 'dataset',
-                            'opt.test.logP-SA')
+        path = os.path.join(os.path.dirname(cwd), 'dataset', 'zinc_plogp_sorted.csv')
         import csv
         with open(path, 'r') as fp:
             reader = csv.reader(fp, delimiter=',', quotechar='"')
