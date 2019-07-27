@@ -31,10 +31,10 @@ def train(env_id, num_timesteps, seed):
     env.seed(workerseed)
 
     pposgd_simple.learn(env, policy_fn,
-        max_timesteps=int(num_timesteps * 1.1),
+        max_time_steps=int(num_timesteps * 1.1),
         timesteps_per_actorbatch=256,
-        clip_param=0.2, entcoeff=0.01,
-        optim_epochs=4, optim_stepsize=1e-3, optim_batchsize=64,
+        clip_param=0.2, entropy_coef=0.01,
+        optim_epochs=4, init_lr=1e-3, optim_batchsize=64,
         gamma=0.99, lam=0.95,
         schedule='linear'
     )
@@ -42,7 +42,7 @@ def train(env_id, num_timesteps, seed):
 
 def main():
     args = atari_arg_parser().parse_args()
-    train(args.env, num_timesteps=args.num_timesteps, seed=args.seed)
+    train(args['env'], num_timesteps=args['num_timesteps'], seed=args['seed'])
 
 if __name__ == '__main__':
     main()

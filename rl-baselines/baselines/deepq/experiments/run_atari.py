@@ -14,20 +14,20 @@ def main():
     parser.add_argument('--num-timesteps', type=int, default=int(10e6))
     args = parser.parse_args()
     logger.configure()
-    set_global_seeds(args.seed)
-    env = make_atari(args.env)
+    set_global_seeds(args['seed'])
+    env = make_atari(args['env'])
     env = bench.Monitor(env, logger.get_dir())
     env = deepq.wrap_atari_dqn(env)
     model = deepq.models.cnn_to_mlp(
         convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
         hiddens=[256],
-        dueling=bool(args.dueling),
+        dueling=bool(args['dueling']),
     )
     act = deepq.learn(
         env,
         q_func=model,
         lr=1e-4,
-        max_timesteps=args.num_timesteps,
+        max_time_steps=args['num_timesteps'],
         buffer_size=10000,
         exploration_fraction=0.1,
         exploration_final_eps=0.01,
@@ -35,7 +35,7 @@ def main():
         learning_starts=10000,
         target_network_update_freq=1000,
         gamma=0.99,
-        prioritized_replay=bool(args.prioritized)
+        prioritized_replay=bool(args['prioritized'])
     )
     # act.save("pong_model.pkl") XXX
     env.close()

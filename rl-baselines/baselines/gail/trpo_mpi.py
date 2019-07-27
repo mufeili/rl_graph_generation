@@ -20,7 +20,7 @@ from baselines.common.cg import cg
 from baselines.gail.statistics import stats
 
 
-def traj_segment_generator(pi, env, reward_giver, horizon, stochastic):
+def trajectory_segment_generator(pi, env, reward_giver, horizon, stochastic):
 
     # Initialize state variables
     t = 0
@@ -104,12 +104,12 @@ def add_vtarg_and_adv(seg, gamma, lam):
 
 def learn(env, policy_func, reward_giver, expert_dataset, rank,
           pretrained, pretrained_weight, *,
-          g_step, d_step, entcoeff, save_per_iter,
+          g_step, d_step, entropy_coef, save_per_iter,
           ckpt_dir, log_dir, timesteps_per_batch, task_name,
           gamma, lam,
           max_kl, cg_iters, cg_damping=1e-2,
           vf_stepsize=3e-4, d_stepsize=3e-4, vf_iters=3,
-          max_timesteps=0, max_episodes=0, max_iters=0,
+          max_time_steps=0, max_episodes=0, max_iters=0,
           callback=None
           ):
 
@@ -121,22 +121,22 @@ def learn(env, policy_func, reward_giver, expert_dataset, rank,
     ob_space = env.observation_space
     ac_space = env.action_space
     pi = policy_func("pi", ob_space, ac_space, reuse=(pretrained_weight != None))
-    oldpi = policy_func("oldpi", ob_space, ac_space)
+    old_pi = policy_func("old_pi", ob_space, ac_space)
     atarg = tf.placeholder(dtype=tf.float32, shape=[None])  # Target advantage function (if applicable)
     ret = tf.placeholder(dtype=tf.float32, shape=[None])  # Empirical return
 
     ob = U.get_placeholder_cached(name="ob")
     ac = pi.pdtype.sample_placeholder([None])
 
-    kloldnew = oldpi.pd.kl(pi.pd)
+    kloldnew = old_pi.pd.kl(pi.pd)
     ent = pi.pd.entropy()
     meankl = tf.reduce_mean(kloldnew)
     meanent = tf.reduce_mean(ent)
-    entbonus = entcoeff * meanent
+    entbonus = entropy_coef * meanent
 
     vferr = tf.reduce_mean(tf.square(pi.vpred - ret))
 
-    ratio = tf.exp(pi.pd.logp(ac) - oldpi.pd.logp(ac))  # advantage * pnew / pold
+    ratio = tf.exp(pi.pd.logp(ac) - old_pi.pd.logp(ac))  # advantage * pnew / pold
     surrgain = tf.reduce_mean(ratio * atarg)
 
     optimgain = surrgain + entbonus
@@ -167,7 +167,7 @@ def learn(env, policy_func, reward_giver, expert_dataset, rank,
     fvp = U.flatgrad(gvp, var_list)
 
     assign_old_eq_new = U.function([], [], updates=[tf.assign(oldv, newv)
-                                                    for (oldv, newv) in zipsame(oldpi.get_variables(), pi.get_variables())])
+                                                    for (oldv, newv) in zipsame(old_pi.get_variables(), pi.get_variables())])
     compute_losses = U.function([ob, ac, atarg], losses)
     compute_lossandgrad = U.function([ob, ac, atarg], losses + [U.flatgrad(optimgain, var_list)])
     compute_fvp = U.function([flat_tangent, ob, ac, atarg], fvp)
@@ -201,7 +201,7 @@ def learn(env, policy_func, reward_giver, expert_dataset, rank,
 
     # Prepare for rollouts
     # ----------------------------------------
-    seg_gen = traj_segment_generator(pi, env, reward_giver, timesteps_per_batch, stochastic=True)
+    seg_gen = trajectory_segment_generator(pi, env, reward_giver, timesteps_per_batch, stochastic=True)
 
     episodes_so_far = 0
     timesteps_so_far = 0
@@ -211,7 +211,7 @@ def learn(env, policy_func, reward_giver, expert_dataset, rank,
     rewbuffer = deque(maxlen=40)  # rolling buffer for episode rewards
     true_rewbuffer = deque(maxlen=40)
 
-    assert sum([max_iters > 0, max_timesteps > 0, max_episodes > 0]) == 1
+    assert sum([max_iters > 0, max_time_steps > 0, max_episodes > 0]) == 1
 
     g_loss_stats = stats(loss_names)
     d_loss_stats = stats(reward_giver.loss_name)
@@ -222,7 +222,7 @@ def learn(env, policy_func, reward_giver, expert_dataset, rank,
 
     while True:
         if callback: callback(locals(), globals())
-        if max_timesteps and timesteps_so_far >= max_timesteps:
+        if max_time_steps and timesteps_so_far >= max_time_steps:
             break
         elif max_episodes and episodes_so_far >= max_episodes:
             break

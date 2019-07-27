@@ -40,7 +40,7 @@ def argsparser():
 
 
 def learn(env, policy_func, dataset, optim_batch_size=128, max_iters=1e4,
-          adam_epsilon=1e-5, optim_stepsize=3e-4,
+          adam_epsilon=1e-5, init_lr=3e-4,
           ckpt_dir=None, log_dir=None, task_name=None,
           verbose=False):
 
@@ -63,7 +63,7 @@ def learn(env, policy_func, dataset, optim_batch_size=128, max_iters=1e4,
     for iter_so_far in tqdm(range(int(max_iters))):
         ob_expert, ac_expert = dataset.get_next_batch(optim_batch_size, 'train')
         train_loss, g = lossandgrad(ob_expert, ac_expert, True)
-        adam.update(g, optim_stepsize)
+        adam.update(g, init_lr)
         if verbose and iter_so_far % val_per_iter == 0:
             ob_expert, ac_expert = dataset.get_next_batch(-1, 'val')
             val_loss, _ = lossandgrad(ob_expert, ac_expert, True)
@@ -79,34 +79,34 @@ def learn(env, policy_func, dataset, optim_batch_size=128, max_iters=1e4,
 
 def get_task_name(args):
     task_name = 'BC'
-    task_name += '.{}'.format(args.env_id.split("-")[0])
-    task_name += '.traj_limitation_{}'.format(args.traj_limitation)
-    task_name += ".seed_{}".format(args.seed)
+    task_name += '.{}'.format(args['env_id'].split("-")[0])
+    task_name += '.traj_limitation_{}'.format(args['traj_limitation'])
+    task_name += ".seed_{}".format(args['seed'])
     return task_name
 
 
 def main(args):
     U.make_session(num_cpu=1).__enter__()
-    set_global_seeds(args.seed)
-    env = gym.make(args.env_id)
+    set_global_seeds(args['seed'])
+    env = gym.make(args['env_id'])
 
     def policy_fn(name, ob_space, ac_space, reuse=False):
         return mlp_policy.MlpPolicy(name=name, ob_space=ob_space, ac_space=ac_space,
-                                    reuse=reuse, hid_size=args.policy_hidden_size, num_hid_layers=2)
+                                    reuse=reuse, hid_size=args['policy_hidden_size'], num_hid_layers=2)
     env = bench.Monitor(env, logger.get_dir() and
                         osp.join(logger.get_dir(), "monitor.json"))
-    env.seed(args.seed)
+    env.seed(args['seed'])
     gym.logger.setLevel(logging.WARN)
     task_name = get_task_name(args)
-    args.checkpoint_dir = osp.join(args.checkpoint_dir, task_name)
-    args.log_dir = osp.join(args.log_dir, task_name)
-    dataset = Mujoco_Dset(expert_path=args.expert_path, traj_limitation=args.traj_limitation)
+    args['checkpoint_dir'] = osp.join(args['checkpoint_dir'], task_name)
+    args['log_dir'] = osp.join(args['log_dir'], task_name)
+    dataset = Mujoco_Dset(expert_path=args['expert_path'], traj_limitation=args['traj_limitation'])
     savedir_fname = learn(env,
                           policy_fn,
                           dataset,
-                          max_iters=args.BC_max_iter,
-                          ckpt_dir=args.checkpoint_dir,
-                          log_dir=args.log_dir,
+                          max_iters=args['BC_max_iter'],
+                          ckpt_dir=args['checkpoint_dir'],
+                          log_dir=args['log_dir'],
                           task_name=task_name,
                           verbose=True)
     avg_len, avg_ret = runner(env,
@@ -114,8 +114,8 @@ def main(args):
                               savedir_fname,
                               timesteps_per_batch=1024,
                               number_trajs=10,
-                              stochastic_policy=args.stochastic_policy,
-                              save=args.save_sample,
+                              stochastic_policy=args['stochastic_policy'],
+                              save=args['save_sample'],
                               reuse=True)
 
 

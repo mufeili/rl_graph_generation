@@ -80,7 +80,7 @@ def load(path):
 def learn(env,
           q_func,
           lr=5e-4,
-          max_timesteps=100000,
+          max_time_steps=100000,
           buffer_size=50000,
           exploration_fraction=0.1,
           exploration_final_eps=0.02,
@@ -116,7 +116,7 @@ def learn(env,
         and returns a tensor of shape (batch_size, num_actions) with values of every action.
     lr: float
         learning rate for adam optimizer
-    max_timesteps: int
+    max_time_steps: int
         number of env steps to optimizer for
     buffer_size: int
         size of the replay buffer
@@ -150,7 +150,7 @@ def learn(env,
         initial value of beta for prioritized replay buffer
     prioritized_replay_beta_iters: int
         number of iterations over which beta will be annealed from initial value
-        to 1.0. If set to None equals to max_timesteps.
+        to 1.0. If set to None equals to max_time_steps.
     prioritized_replay_eps: float
         epsilon to add to the TD errors when updating priorities.
     callback: (locals, globals) -> None
@@ -196,7 +196,7 @@ def learn(env,
     if prioritized_replay:
         replay_buffer = PrioritizedReplayBuffer(buffer_size, alpha=prioritized_replay_alpha)
         if prioritized_replay_beta_iters is None:
-            prioritized_replay_beta_iters = max_timesteps
+            prioritized_replay_beta_iters = max_time_steps
         beta_schedule = LinearSchedule(prioritized_replay_beta_iters,
                                        initial_p=prioritized_replay_beta0,
                                        final_p=1.0)
@@ -204,7 +204,7 @@ def learn(env,
         replay_buffer = ReplayBuffer(buffer_size)
         beta_schedule = None
     # Create the schedule for exploration starting from 1.
-    exploration = LinearSchedule(schedule_timesteps=int(exploration_fraction * max_timesteps),
+    exploration = LinearSchedule(schedule_timesteps=int(exploration_fraction * max_time_steps),
                                  initial_p=1.0,
                                  final_p=exploration_final_eps)
 
@@ -219,7 +219,7 @@ def learn(env,
     with tempfile.TemporaryDirectory() as td:
         model_saved = False
         model_file = os.path.join(td, "model")
-        for t in range(max_timesteps):
+        for t in range(max_time_steps):
             if callback is not None:
                 if callback(locals(), globals()):
                     break

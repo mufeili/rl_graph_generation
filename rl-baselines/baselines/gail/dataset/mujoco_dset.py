@@ -113,4 +113,4 @@ if __name__ == '__main__':
     parser.add_argument("--traj_limitation", type=int, default=None)
     parser.add_argument("--plot", type=bool, default=False)
     args = parser.parse_args()
-    test(args.expert_path, args.traj_limitation, args.plot)
+    test(args['expert_path'], args['traj_limitation'], args['plot'])

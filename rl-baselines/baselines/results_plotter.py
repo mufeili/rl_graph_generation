@@ -79,8 +79,8 @@ def main():
     parser.add_argument('--xaxis', help = 'Varible on X-axis', default = X_TIMESTEPS)
     parser.add_argument('--task_name', help = 'Title of plot', default = 'Breakout')
     args = parser.parse_args()
-    args.dirs = [os.path.abspath(dir) for dir in args.dirs]
-    plot_results(args.dirs, args.num_timesteps, args.xaxis, args.task_name)
+    args['dirs'] = [os.path.abspath(dir) for dir in args['dirs']]
+    plot_results(args['dirs'], args['num_timesteps'], args['xaxis'], args['task_name'])
     plt.show()
 
 if __name__ == '__main__':

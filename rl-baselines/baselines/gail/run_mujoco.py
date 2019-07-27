@@ -44,8 +44,8 @@ def argsparser():
     # Algorithms Configuration
     parser.add_argument('--algo', type=str, choices=['trpo', 'ppo'], default='trpo')
     parser.add_argument('--max_kl', type=float, default=0.01)
-    parser.add_argument('--policy_entcoeff', help='entropy coefficiency of policy', type=float, default=0)
-    parser.add_argument('--adversary_entcoeff', help='entropy coefficiency of discriminator', type=float, default=1e-3)
+    parser.add_argument('--policy_entropy_coef', help='entropy coefficiency of policy', type=float, default=0)
+    parser.add_argument('--adversary_entropy_coef', help='entropy coefficiency of discriminator', type=float, default=1e-3)
     # Traing Configuration
     parser.add_argument('--save_per_iter', help='save model every xx iterations', type=int, default=100)
     parser.add_argument('--num_timesteps', help='number of timesteps per episode', type=int, default=5e6)
@@ -56,62 +56,64 @@ def argsparser():
 
 
 def get_task_name(args):
-    task_name = args.algo + "_gail."
-    if args.pretrained:
+    task_name = args['algo'] + "_gail."
+    if args['pretrained']:
         task_name += "with_pretrained."
-    if args.traj_limitation != np.inf:
-        task_name += "transition_limitation_%d." % args.traj_limitation
-    task_name += args.env_id.split("-")[0]
-    task_name = task_name + ".g_step_" + str(args.g_step) + ".d_step_" + str(args.d_step) + \
-        ".policy_entcoeff_" + str(args.policy_entcoeff) + ".adversary_entcoeff_" + str(args.adversary_entcoeff)
-    task_name += ".seed_" + str(args.seed)
+    if args['traj_limitation'] != np.inf:
+        task_name += "transition_limitation_%d." % args['traj_limitation']
+    task_name += args['env_id'].split("-")[0]
+    task_name = task_name + ".g_step_" + str(args['g_step']) + ".d_step_" + str(args['d_step']) + \
+        ".policy_entropy_coef_" + str(args['policy_entropy_coef']) + ".adversary_entropy_coef_" + \
+                str(args['adversary_entropy_coef'])
+    task_name += ".seed_" + str(args['seed'])
     return task_name
 
 
 def main(args):
     U.make_session(num_cpu=1).__enter__()
-    set_global_seeds(args.seed)
-    env = gym.make(args.env_id)
+    set_global_seeds(args['seed'])
+    env = gym.make(args['env_id'])
 
     def policy_fn(name, ob_space, ac_space, reuse=False):
         return mlp_policy.MlpPolicy(name=name, ob_space=ob_space, ac_space=ac_space,
-                                    reuse=reuse, hid_size=args.policy_hidden_size, num_hid_layers=2)
+                                    reuse=reuse, hid_size=args['policy_hidden_size'], num_hid_layers=2)
     env = bench.Monitor(env, logger.get_dir() and
                         osp.join(logger.get_dir(), "monitor.json"))
-    env.seed(args.seed)
+    env.seed(args['seed'])
     gym.logger.setLevel(logging.WARN)
     task_name = get_task_name(args)
-    args.checkpoint_dir = osp.join(args.checkpoint_dir, task_name)
-    args.log_dir = osp.join(args.log_dir, task_name)
+    args['checkpoint_dir'] = osp.join(args['checkpoint_dir'], task_name)
+    args['log_dir'] = osp.join(args['log_dir'], task_name)
 
-    if args.task == 'train':
-        dataset = Mujoco_Dset(expert_path=args.expert_path, traj_limitation=args.traj_limitation)
-        reward_giver = TransitionClassifier(env, args.adversary_hidden_size, entcoeff=args.adversary_entcoeff)
+    if args['task'] == 'train':
+        dataset = Mujoco_Dset(expert_path=args['expert_path'], traj_limitation=args['traj_limitation'])
+        reward_giver = TransitionClassifier(env, args['adversary_hidden_size'],
+                                            entropy_coef=args['adversary_entropy_coef'])
         train(env,
-              args.seed,
+              args['seed'],
               policy_fn,
               reward_giver,
               dataset,
-              args.algo,
-              args.g_step,
-              args.d_step,
-              args.policy_entcoeff,
-              args.num_timesteps,
-              args.save_per_iter,
-              args.checkpoint_dir,
-              args.log_dir,
-              args.pretrained,
-              args.BC_max_iter,
+              args['algo'],
+              args['g_step'],
+              args['d_step'],
+              args['policy_entropy_coef'],
+              args['num_timesteps'],
+              args['save_per_iter'],
+              args['checkpoint_dir'],
+              args['log_dir'],
+              args['pretrained'],
+              args['BC_max_iter'],
               task_name
               )
-    elif args.task == 'evaluate':
+    elif args['task'] == 'evaluate':
         runner(env,
                policy_fn,
-               args.load_model_path,
+               args['load_model_path'],
                timesteps_per_batch=1024,
                number_trajs=10,
-               stochastic_policy=args.stochastic_policy,
-               save=args.save_sample
+               stochastic_policy=args['stochastic_policy'],
+               save=args['save_sample']
                )
     else:
         raise NotImplementedError
@@ -119,7 +121,7 @@ def main(args):
 
 
 def train(env, seed, policy_fn, reward_giver, dataset, algo,
-          g_step, d_step, policy_entcoeff, num_timesteps, save_per_iter,
+          g_step, d_step, policy_entropy_coef, num_timesteps, save_per_iter,
           checkpoint_dir, log_dir, pretrained, BC_max_iter, task_name=None):
 
     pretrained_weight = None
@@ -141,8 +143,8 @@ def train(env, seed, policy_fn, reward_giver, dataset, algo,
         trpo_mpi.learn(env, policy_fn, reward_giver, dataset, rank,
                        pretrained=pretrained, pretrained_weight=pretrained_weight,
                        g_step=g_step, d_step=d_step,
-                       entcoeff=policy_entcoeff,
-                       max_timesteps=num_timesteps,
+                       entropy_coef=policy_entropy_coef,
+                       max_time_steps=num_timesteps,
                        ckpt_dir=checkpoint_dir, log_dir=log_dir,
                        save_per_iter=save_per_iter,
                        timesteps_per_batch=1024,

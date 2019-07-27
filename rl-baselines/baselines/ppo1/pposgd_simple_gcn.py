@@ -6,11 +6,11 @@ from baselines.common.mpi_adam import MpiAdam
 from baselines.common.mpi_moments import mpi_moments
 from mpi4py import MPI
 from collections import deque
-from baselines.ppo1.gcn_policy import discriminator,discriminator_net
+from baselines.ppo1.gcn_policy import discriminator, discriminator_net, GCNPolicy
 import copy
 
 
-def traj_segment_generator(args, pi, env, horizon, stochastic, d_step_func, d_final_func):
+def trajectory_segment_generator(args, pi, env, horizon, stochastic, d_step_func, d_final_func):
     t = 0
     ac = env.action_space.sample() # not used, just so we have the datatype
     new = True # marks if we're on first timestep of an episode
@@ -96,21 +96,21 @@ def traj_segment_generator(args, pi, env, horizon, stochastic, d_step_func, d_fi
         if rew_env>0: # if action valid
             cur_ep_len_valid += 1
             # add stepwise discriminator reward
-            if args.has_d_step==1:
-                if args.gan_type=='normal':
-                    rew_d_step = args.gan_step_ratio * (
+            if args['has_d_step']==1:
+                if args['gan_type']=='normal':
+                    rew_d_step = args['gan_step_ratio'] * (
                         d_step_func(ob['adj'][np.newaxis, :, :, :], ob['node'][np.newaxis, :, :, :])) / env.max_atom
-                elif args.gan_type == 'recommend':
-                    rew_d_step = args.gan_step_ratio * (
+                elif args['gan_type'] == 'recommend':
+                    rew_d_step = args['gan_step_ratio'] * (
                         max(1-d_step_func(ob['adj'][np.newaxis, :, :, :], ob['node'][np.newaxis, :, :, :]),-2)) / env.max_atom
         rew_d_final = 0 # default
         if new:
-            if args.has_d_final==1:
-                if args.gan_type == 'normal':
-                    rew_d_final = args.gan_final_ratio * (
+            if args['has_d_final']==1:
+                if args['gan_type'] == 'normal':
+                    rew_d_final = args['gan_final_ratio'] * (
                         d_final_func(ob['adj'][np.newaxis, :, :, :], ob['node'][np.newaxis, :, :, :]))
-                elif args.gan_type == 'recommend':
-                    rew_d_final = args.gan_final_ratio * (
+                elif args['gan_type'] == 'recommend':
+                    rew_d_final = args['gan_final_ratio'] * (
                         max(1 - d_final_func(ob['adj'][np.newaxis, :, :, :], ob['node'][np.newaxis, :, :, :]),
                             -2))
 
@@ -123,8 +123,8 @@ def traj_segment_generator(args, pi, env, horizon, stochastic, d_step_func, d_fi
         cur_ep_len += 1
 
         if new:
-            if args.env=='molecule':
-                with open('molecule_gen/'+args.name_full+'.csv', 'a') as f:
+            if args['env']=='molecule':
+                with open('molecule_gen/'+args['name_full']+'.csv', 'a') as f:
                     str = ''.join(['{},']*(len(info)+3))[:-1]+'\n'
                     f.write(str.format(info['smile'], info['reward_valid'], info['reward_qed'], info['reward_sa'], info['final_stat'], rew_env, rew_d_step, rew_d_final, cur_ep_ret, info['flag_steric_strain_filter'], info['flag_zinc_molecule_filter'], info['stop']))
             ob_adjs_final.append(ob['adj'])
@@ -181,19 +181,51 @@ def add_vtarg_and_adv(seg, gamma, lam):
         gaelam[t] = lastgaelam = delta + gamma * lam * nonterminal * lastgaelam
     seg["tdlamret"] = seg["adv"] + seg["vpred"]
 
-def learn(args,env, policy_fn, *,
-        timesteps_per_actorbatch, # timesteps per actor per update
-        clip_param, entcoeff, # clipping parameter epsilon, entropy coeff
-        optim_epochs, optim_stepsize, optim_batchsize,# optimization hypers
-        gamma, lam, # advantage estimation
-        max_timesteps=0, max_episodes=0, max_iters=0, max_seconds=0,  # time constraint
-        adam_epsilon=1e-5,
-        schedule='constant', # annealing for stepsize parameters (epsilon and adam)
-        writer=None):
+def learn(args, env, evaluator, max_time_steps, horizon,
+          max_episodes=0, max_iters=0, max_seconds=0,
+          init_lr=0.001, clip_param=0.2, entropy_coef=0.01, optim_epochs=8,
+          optim_batchsize=32, gamma=1, lam=0.95, adam_epsilon=1e-5,
+          schedule='linear', writer=None):
+    """
+    Parameters
+    ----------
+    args : dict
+    env : MoleculeEnv
+    evaluator : Evaluator
+    max_time_steps : int
+    horizon : int
+    max_episodes : int
+    max_iters : int
+    max_seconds : int
+    init_lr : float
+        Initial learning rate
+    clip_param : float
+        Hyperparameter for PPO objective
+    entropy_coef : float
+        Weight for entropy objective
+    optim_epochs : int
+    gamma : int
+    lam : float
+    adam_epislon : float
+        Hyperparameter for Adam to stabilize the learning
+    schedule : str
+    writer : tensorboardX.writer.SummaryWriter
+    """
     ob_space = env.observation_space
     ac_space = env.action_space
-    pi = policy_fn("pi", ob_space, ac_space) # Construct network for new policy
-    oldpi = policy_fn("oldpi", ob_space, ac_space) # Network for old policy
+
+    # Initialize models
+    pi = GCNPolicy(name="pi",
+                   ob_space=ob_space,
+                   ac_space=ac_space,
+                   atom_type_num=env.atom_type_num,
+                   args=args)
+    old_pi = GCNPolicy(name="old_pi",
+                       ob_space=ob_space,
+                       ac_space=ac_space,
+                       atom_type_num=env.atom_type_num,
+                       args=args)
+
     atarg = tf.placeholder(dtype=tf.float32, shape=[None]) # Target advantage function (if applicable)
     ret = tf.placeholder(dtype=tf.float32, shape=[None]) # Empirical return
 
@@ -215,14 +247,14 @@ def learn(args,env, policy_fn, *,
     ac = tf.placeholder(dtype=tf.int64, shape=[None,4],name='ac_real')
 
     ## PPO loss
-    kloldnew = oldpi.pd.kl(pi.pd)
+    kloldnew = old_pi.pd.kl(pi.pd)
     ent = pi.pd.entropy()
     meankl = tf.reduce_mean(kloldnew)
     meanent = tf.reduce_mean(ent)
-    pol_entpen = (-entcoeff) * meanent
+    pol_entpen = (-entropy_coef) * meanent
 
     pi_logp = pi.pd.logp(ac)
-    ratio = tf.exp(pi.pd.logp(ac) - oldpi.pd.logp(ac)) # pnew / pold
+    ratio = tf.exp(pi.pd.logp(ac) - old_pi.pd.logp(ac)) # pnew / pold
     surr1 = ratio * atarg # surrogate from conservative policy iteration
     surr2 = tf.clip_by_value(ratio, 1.0 - clip_param, 1.0 + clip_param) * atarg #
     pol_surr = - tf.reduce_mean(tf.minimum(surr1, surr2)) # PPO's pessimistic surrogate (L^CLIP)
@@ -239,9 +271,9 @@ def learn(args,env, policy_fn, *,
     loss_d_step_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=step_logit_real, labels=tf.ones_like(step_logit_real)*0.9))
     loss_d_step_gen = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=step_logit_gen, labels=tf.zeros_like(step_logit_gen)))
     loss_d_step = loss_d_step_real+loss_d_step_gen
-    if args.gan_type=='normal':
+    if args['gan_type']=='normal':
         loss_g_step_gen = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=step_logit_gen, labels=tf.zeros_like(step_logit_gen)))
-    elif args.gan_type=='recommend':
+    elif args['gan_type']=='recommend':
         loss_g_step_gen = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=step_logit_gen, labels=tf.ones_like(step_logit_gen)*0.9))
 
     final_pred_real, final_logit_real = discriminator_net(ob_real, args, name='d_final')
@@ -249,9 +281,9 @@ def learn(args,env, policy_fn, *,
     loss_d_final_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=final_logit_real, labels=tf.ones_like(final_logit_real)*0.9))
     loss_d_final_gen = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=final_logit_gen, labels=tf.zeros_like(final_logit_gen)))
     loss_d_final = loss_d_final_real+loss_d_final_gen
-    if args.gan_type == 'normal':
+    if args['gan_type'] == 'normal':
         loss_g_final_gen = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=final_logit_gen, labels=tf.zeros_like(final_logit_gen)))
-    elif args.gan_type == 'recommend':
+    elif args['gan_type'] == 'recommend':
         loss_g_final_gen = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=final_logit_gen, labels=tf.ones_like(final_logit_gen)*0.9))
 
     var_list_pi = pi.get_trainable_variables()
@@ -260,7 +292,7 @@ def learn(args,env, policy_fn, *,
     var_list_d_final = [var for var in tf.global_variables() if 'd_final' in var.name]
 
     ## loss update function
-    lossandgrad_ppo = U.function([ob['adj'], ob['node'], ac, pi.ac_real, oldpi.ac_real, atarg, ret, lrmult], losses + [U.flatgrad(total_loss, var_list_pi)])
+    lossandgrad_ppo = U.function([ob['adj'], ob['node'], ac, pi.ac_real, old_pi.ac_real, atarg, ret, lrmult], losses + [U.flatgrad(total_loss, var_list_pi)])
     lossandgrad_expert = U.function([ob['adj'], ob['node'], ac, pi.ac_real], [loss_expert, U.flatgrad(loss_expert, var_list_pi)])
     lossandgrad_d_step = U.function([ob_real['adj'], ob_real['node'], ob_gen['adj'], ob_gen['node']], [loss_d_step, U.flatgrad(loss_d_step, var_list_d_step)])
     lossandgrad_d_final = U.function([ob_real['adj'], ob_real['node'], ob_gen['adj'], ob_gen['node']], [loss_d_final, U.flatgrad(loss_d_final, var_list_d_final)])
@@ -272,9 +304,9 @@ def learn(args,env, policy_fn, *,
     adam_d_final = MpiAdam(var_list_d_final, epsilon=adam_epsilon)
 
     assign_old_eq_new = U.function([],[], updates=[tf.assign(oldv, newv)
-        for (oldv, newv) in zipsame(oldpi.get_variables(), pi.get_variables())])
+        for (oldv, newv) in zipsame(old_pi.get_variables(), pi.get_variables())])
 
-    compute_losses = U.function([ob['adj'], ob['node'], ac, pi.ac_real, oldpi.ac_real, atarg, ret, lrmult], losses)
+    compute_losses = U.function([ob['adj'], ob['node'], ac, pi.ac_real, old_pi.ac_real, atarg, ret, lrmult], losses)
 
     # Prepare for rollouts
     # ----------------------------------------
@@ -291,12 +323,12 @@ def learn(args,env, policy_fn, *,
     rewbuffer_final = deque(maxlen=100) # rolling buffer for episode rewards
     rewbuffer_final_stat = deque(maxlen=100) # rolling buffer for episode rewardsn
 
-    seg_gen = traj_segment_generator(args, pi, env, timesteps_per_actorbatch, True, loss_g_gen_step_func,loss_g_gen_final_func)
+    seg_gen = trajectory_segment_generator(args, pi, env, horizon, True, loss_g_gen_step_func,loss_g_gen_final_func)
 
-    assert sum([max_iters>0, max_timesteps>0, max_episodes>0, max_seconds>0])==1, "Only one time constraint permitted"
-    if args.load==1:
+    assert sum([max_iters>0, max_time_steps>0, max_episodes>0, max_seconds>0])==1, "Only one time constraint permitted"
+    if args['load']==1:
         try:
-            fname = './ckpt/' + args.name_full_load
+            fname = './ckpt/' + args['name_full_load']
             sess = tf.get_default_session()
             saver = tf.train.Saver(var_list_pi)
             saver.restore(sess, fname)
@@ -313,7 +345,7 @@ def learn(args,env, policy_fn, *,
     level = 0
     ## start training
     while True:
-        if max_timesteps and timesteps_so_far >= max_timesteps:
+        if max_time_steps and timesteps_so_far >= max_time_steps:
             break
         elif max_episodes and episodes_so_far >= max_episodes:
             break
@@ -325,7 +357,7 @@ def learn(args,env, policy_fn, *,
         if schedule == 'constant':
             cur_lrmult = 1.0
         elif schedule == 'linear':
-            cur_lrmult =  max(1.0 - float(timesteps_so_far) / max_timesteps, 0)
+            cur_lrmult =  max(1.0 - float(timesteps_so_far) / max_time_steps, 0)
         else:
             raise NotImplementedError
 
@@ -344,46 +376,48 @@ def learn(args,env, policy_fn, *,
             g_expert=0
             g_expert_stop=0
 
-            loss_d_step = 0
-            loss_d_final = 0
-            g_ppo = 0
-            g_d_step = 0
-            g_d_final = 0
+            # loss_d_step = 0
+            # loss_d_final = 0
+            # g_ppo = 0
+            # g_d_step = 0
+            # g_d_final = 0
 
             pretrain_shift = 5
             ## Expert
-            if iters_so_far>=args.expert_start and iters_so_far<=args.expert_end+pretrain_shift:
+            if iters_so_far>=args['expert_start'] and iters_so_far<=args['expert_end']+pretrain_shift:
                 ## Expert train
                 # # # learn how to stop
                 ob_expert, ac_expert = env.get_expert(optim_batchsize)
                 loss_expert, g_expert = lossandgrad_expert(ob_expert['adj'], ob_expert['node'], ac_expert, ac_expert)
                 loss_expert = np.mean(loss_expert)
 
-            ## PPO
-            if iters_so_far>=args.rl_start and iters_so_far<=args.rl_end:
+            if iters_so_far>=args['rl_start'] and iters_so_far<=args['rl_end']:
                 assign_old_eq_new() # set old parameter values to new parameter values
                 batch = d.next_batch(optim_batchsize)
                 # ppo
-                if iters_so_far >= args.rl_start+pretrain_shift: # start generator after discriminator trained a well..
+                if iters_so_far >= args['rl_start']+pretrain_shift: # start generator after discriminator trained a well..
                     *newlosses, g_ppo = lossandgrad_ppo(batch["ob_adj"], batch["ob_node"], batch["ac"], batch["ac"], batch["ac"], batch["atarg"], batch["vtarg"], cur_lrmult)
 
-                if args.has_d_step==1 and i_optim>=optim_epochs//2:
+                if args['has_d_step']==1 and i_optim>=optim_epochs//2:
                     # update step discriminator
-                    ob_expert, _ = env.get_expert(optim_batchsize,curriculum=args.curriculum,level_total=args.curriculum_num,level=level)
+                    ob_expert, _ = env.get_expert(optim_batchsize,curriculum=args['curriculum'],
+                                                  level_total=args['curriculum_num'],level=level)
                     loss_d_step, g_d_step = lossandgrad_d_step(ob_expert["adj"], ob_expert["node"], batch["ob_adj"], batch["ob_node"])
-                    adam_d_step.update(g_d_step, optim_stepsize * cur_lrmult)
+                    adam_d_step.update(g_d_step, init_lr * cur_lrmult)
                     loss_d_step = np.mean(loss_d_step)
 
-                if args.has_d_final==1 and i_optim>=optim_epochs//4*3:
+                if args['has_d_final']==1 and i_optim>=optim_epochs//4*3:
                     # update final discriminator
-                    ob_expert, _ = env.get_expert(optim_batchsize, is_final=True, curriculum=args.curriculum,level_total=args.curriculum_num, level=level)
+                    ob_expert, _ = env.get_expert(optim_batchsize, is_final=True, curriculum=args['curriculum'],
+                                                  level_total=args['curriculum_num'], level=level)
                     seg_final_adj, seg_final_node = traj_final_generator(pi, copy.deepcopy(env), optim_batchsize,True)
                     # update final discriminator
                     loss_d_final, g_d_final = lossandgrad_d_final(ob_expert["adj"], ob_expert["node"], seg_final_adj, seg_final_node)
-                    adam_d_final.update(g_d_final, optim_stepsize * cur_lrmult)
+                    adam_d_final.update(g_d_final, init_lr * cur_lrmult)
 
             # update generator
-            adam_pi.update(0.2*g_ppo+0.05*g_expert, optim_stepsize * cur_lrmult)
+            adam_pi.update(0.2*g_ppo+0.05*g_expert, init_lr * cur_lrmult)
+            adam_pi.update(g_expert, init_lr * cur_lrmult)
 
         ## PPO val
         losses = []
@@ -396,28 +430,14 @@ def learn(args,env, policy_fn, *,
             writer.add_scalar("loss_teacher_forcing", loss_expert, iters_so_far)
             writer.add_scalar("loss_d_step", loss_d_step, iters_so_far)
             writer.add_scalar("loss_d_final", loss_d_final, iters_so_far)
-            writer.add_scalar('grad_expert_min', np.amin(g_expert), iters_so_far)
-            writer.add_scalar('grad_expert_max', np.amax(g_expert), iters_so_far)
-            writer.add_scalar('grad_expert_norm', np.linalg.norm(g_expert), iters_so_far)
-            writer.add_scalar('grad_expert_stop_min', np.amin(g_expert_stop), iters_so_far)
-            writer.add_scalar('grad_expert_stop_max', np.amax(g_expert_stop), iters_so_far)
-            writer.add_scalar('grad_expert_stop_norm', np.linalg.norm(g_expert_stop), iters_so_far)
-            writer.add_scalar('grad_rl_min', np.amin(g_ppo), iters_so_far)
-            writer.add_scalar('grad_rl_max', np.amax(g_ppo), iters_so_far)
-            writer.add_scalar('grad_rl_norm', np.linalg.norm(g_ppo), iters_so_far)
-            writer.add_scalar('g_d_step_min', np.amin(g_d_step), iters_so_far)
-            writer.add_scalar('g_d_step_max', np.amax(g_d_step), iters_so_far)
-            writer.add_scalar('g_d_step_norm', np.linalg.norm(g_d_step), iters_so_far)
-            writer.add_scalar('g_d_final_min', np.amin(g_d_final), iters_so_far)
-            writer.add_scalar('g_d_final_max', np.amax(g_d_final), iters_so_far)
-            writer.add_scalar('g_d_final_norm', np.linalg.norm(g_d_final), iters_so_far)
-            writer.add_scalar('lr', optim_stepsize * cur_lrmult, iters_so_far)
+            writer.add_scalar('lr', init_lr * cur_lrmult, iters_so_far)
 
         for (lossval, name) in zipsame(meanlosses, loss_names):
             if writer is not None:
                 writer.add_scalar("loss_"+name, lossval, iters_so_far)
         if writer is not None:
             writer.add_scalar("ev_tdlam_before", explained_variance(vpredbefore, tdlamret), iters_so_far)
+
         lrlocal = (seg["ep_lens"],seg["ep_lens_valid"], seg["ep_rets"],seg["ep_rets_env"],seg["ep_rets_d_step"],seg["ep_rets_d_final"],seg["ep_final_rew"],seg["ep_final_rew_stat"]) # local values
         listoflrpairs = MPI.COMM_WORLD.allgather(lrlocal) # list of tuples
         lens, lens_valid, rews, rews_env, rews_d_step,rews_d_final, rews_final,rews_final_stat = map(flatten_lists, zip(*listoflrpairs))
@@ -445,18 +465,20 @@ def learn(args,env, policy_fn, *,
             writer.add_scalar("EpisodesSoFar", episodes_so_far, iters_so_far)
             writer.add_scalar("TimestepsSoFar", timesteps_so_far, iters_so_far)
             writer.add_scalar("TimeElapsed", time.time() - tstart, iters_so_far)
+            writer.add_scalar("level", level, iters_so_far)
 
         if MPI.COMM_WORLD.Get_rank() == 0:
-            with open('molecule_gen/' + args.name_full + '.csv', 'a') as f:
+            with open('molecule_gen/' + args['name_full'] + '.csv', 'a') as f:
                 f.write('***** Iteration {} *****\n'.format(iters_so_far))
             # save
-            if iters_so_far % args.save_every == 0:
-                fname = './ckpt/' + args.name_full + '_' + str(iters_so_far)
+            if iters_so_far % args['save_every'] == 0:
+                fname = './ckpt/' + args['name_full'] + '_' + str(iters_so_far)
                 saver = tf.train.Saver(var_list_pi)
                 saver.save(tf.get_default_session(), fname)
                 print('model saved!',fname)
         iters_so_far += 1
-        if iters_so_far%args.curriculum_step and iters_so_far//args.curriculum_step<args.curriculum_num:
+        if (iters_so_far%args['curriculum_step'] == 0) and \
+                (iters_so_far//args['curriculum_step'] < args['curriculum_num']):
             level += 1
 
 def flatten_lists(listoflists):

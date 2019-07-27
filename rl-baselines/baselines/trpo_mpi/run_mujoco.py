@@ -23,12 +23,12 @@ def train(env_id, num_timesteps, seed):
             hid_size=32, num_hid_layers=2)
     env = make_mujoco_env(env_id, workerseed)
     trpo_mpi.learn(env, policy_fn, timesteps_per_batch=1024, max_kl=0.01, cg_iters=10, cg_damping=0.1,
-        max_timesteps=num_timesteps, gamma=0.99, lam=0.98, vf_iters=5, vf_stepsize=1e-3)
+        max_time_steps=num_timesteps, gamma=0.99, lam=0.98, vf_iters=5, vf_stepsize=1e-3)
     env.close()
 
 def main():
     args = mujoco_arg_parser().parse_args()
-    train(args.env, num_timesteps=args.num_timesteps, seed=args.seed)
+    train(args['env'], num_timesteps=args['num_timesteps'], seed=args['seed'])
 
 
 if __name__ == '__main__':

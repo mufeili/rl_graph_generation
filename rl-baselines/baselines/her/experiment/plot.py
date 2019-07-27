@@ -58,7 +58,7 @@ args = parser.parse_args()
 
 # Load all data.
 data = {}
-paths = [os.path.abspath(os.path.join(path, '..')) for path in glob2.glob(os.path.join(args.dir, '**', 'progress.csv'))]
+paths = [os.path.abspath(os.path.join(path, '..')) for path in glob2.glob(os.path.join(args['dir'], '**', 'progress.csv'))]
 for curr_path in paths:
     if not os.path.isdir(curr_path):
         continue
@@ -89,7 +89,7 @@ for curr_path in paths:
     assert success_rate.shape == epoch.shape
     x = epoch
     y = success_rate
-    if args.smooth:
+    if args['smooth']:
         x, y = smooth_reward_curve(epoch, success_rate)
     assert x.shape == y.shape
 
@@ -115,4 +115,4 @@ for env_id in sorted(data.keys()):
     plt.xlabel('Epoch')
     plt.ylabel('Median Success Rate')
     plt.legend()
-    plt.savefig(os.path.join(args.dir, 'fig_{}.png'.format(env_id)))
+    plt.savefig(os.path.join(args['dir'], 'fig_{}.png'.format(env_id)))

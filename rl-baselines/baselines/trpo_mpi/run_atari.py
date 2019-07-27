@@ -32,12 +32,12 @@ def train(env_id, num_timesteps, seed):
     env.seed(workerseed)
 
     trpo_mpi.learn(env, policy_fn, timesteps_per_batch=512, max_kl=0.001, cg_iters=10, cg_damping=1e-3,
-        max_timesteps=int(num_timesteps * 1.1), gamma=0.98, lam=1.0, vf_iters=3, vf_stepsize=1e-4, entcoeff=0.00)
+        max_time_steps=int(num_timesteps * 1.1), gamma=0.98, lam=1.0, vf_iters=3, vf_stepsize=1e-4, entropy_coef=0.00)
     env.close()
 
 def main():
     args = atari_arg_parser().parse_args()
-    train(args.env, num_timesteps=args.num_timesteps, seed=args.seed)
+    train(args['env'], num_timesteps=args['num_timesteps'], seed=args['seed'])
 
 if __name__ == "__main__":
     main()

@@ -33,8 +33,8 @@ def main():
     parser.add_argument('--policy', help='Policy architecture', choices=['cnn', 'lstm', 'lnlstm'], default='cnn')
     args = parser.parse_args()
     logger.configure()
-    train(args.env, num_timesteps=args.num_timesteps, seed=args.seed,
-        policy=args.policy)
+    train(args['env'], num_timesteps=args['num_timesteps'], seed=args['seed'],
+        policy=args['policy'])
 
 if __name__ == '__main__':
     main()

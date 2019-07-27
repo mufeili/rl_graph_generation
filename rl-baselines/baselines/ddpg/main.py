@@ -108,8 +108,8 @@ def parse_args():
     args = parser.parse_args()
     # we don't directly specify timesteps for this script, so make sure that if we do specify them
     # they agree with the other parameters
-    if args.num_timesteps is not None:
-        assert(args.num_timesteps == args.nb_epochs * args.nb_epoch_cycles * args.nb_rollout_steps)
+    if args['num_timesteps'] is not None:
+        assert(args['num_timesteps'] == args['nb_epochs'] * args['nb_epoch_cycles'] * args['nb_rollout_steps'])
     dict_args = vars(args)
     del dict_args['num_timesteps']
     return dict_args

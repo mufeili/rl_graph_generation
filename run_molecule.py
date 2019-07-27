@@ -10,7 +10,7 @@ import time
 import gym
 from gym_molecule.envs.molecule import GraphEnv
 
-def train(args,seed,writer=None):
+def train(args, seed, writer=None):
     from baselines.ppo1 import pposgd_simple_gcn, gcn_policy
     import baselines.common.tf_util as U
     rank = MPI.COMM_WORLD.Get_rank()
@@ -22,25 +22,24 @@ def train(args,seed,writer=None):
         logger.configure(format_strs=[])
     workerseed = seed + 10000 * MPI.COMM_WORLD.Get_rank()
     set_global_seeds(workerseed)
-    if args.env=='molecule':
+    if args['env']=='molecule':
         env = gym.make('molecule-v0')
-        env.init(data_type=args.dataset,logp_ratio=args.logp_ratio,qed_ratio=args.qed_ratio,sa_ratio=args.sa_ratio,
-                 reward_step_total=args.reward_step_total,is_normalize=args.normalize_adj,reward_type=args.reward_type,
-                 reward_target=args.reward_target,has_feature=bool(args.has_feature),
-                 is_conditional=bool(args.is_conditional),conditional=args.conditional,max_action=args.max_action,
-                 min_action=args.min_action) # remember call this after gym.make!!
+        env.init(data_type=args['dataset'],logp_ratio=args['logp_ratio'],qed_ratio=args['qed_ratio'],
+                 sa_ratio=args['sa_ratio'], reward_step_total=args['reward_step_total'],
+                 is_normalize=args['normalize_adj'], reward_type=args['reward_type'],
+                 reward_target=args['reward_target'], has_feature=bool(args['has_feature']),
+                 is_conditional=bool(args['is_conditional']), conditional=args['conditional'],
+                 max_action=args['max_action'], min_action=args['min_action']) # remember call this after gym.make!!
     else:
         raise ValueError
     print(env.observation_space)
-    def policy_fn(name, ob_space, ac_space):
-        return gcn_policy.GCNPolicy(name=name, ob_space=ob_space, ac_space=ac_space, atom_type_num=env.atom_type_num,args=args)
     env.seed(workerseed)
 
-    pposgd_simple_gcn.learn(args,env, policy_fn,
-        max_timesteps=args.num_steps,
+    pposgd_simple_gcn.learn(args, env,
+        max_time_steps=args['num_steps'],
         timesteps_per_actorbatch=256,
-        clip_param=0.2, entcoeff=0.01,
-        optim_epochs=8, optim_stepsize=args.lr, optim_batchsize=32,
+        clip_param=0.2, entropy_coef=0.01,
+        optim_epochs=8, init_lr=args['lr'], optim_batchsize=32,
         gamma=1, lam=0.95,
         schedule='linear', writer=writer
     )
@@ -56,6 +55,7 @@ def arg_parser():
 
 def molecule_arg_parser():
     parser = arg_parser()
+    parser.add_argument('-rl', '--rl', action='store_true')
     parser.add_argument('--env', type=str, help='environment name: molecule; graph',
                         default='molecule')
     parser.add_argument('--seed', help='RNG seed', type=int, default=666)
@@ -64,15 +64,15 @@ def molecule_arg_parser():
     parser.add_argument('--dataset', type=str, default='zinc',help='caveman; grid; ba; zinc; gdb')
     parser.add_argument('--reward_type', type=str, default='logppen',help='logppen;logp_target;qed;qedsa;qed_target;mw_target;gan')
     parser.add_argument('--reward_target', type=float, default=0.5,help='target reward value')
-    parser.add_argument('--logp_ratio', type=float, default=1)
-    parser.add_argument('--qed_ratio', type=float, default=1)
-    parser.add_argument('--sa_ratio', type=float, default=1)
+    parser.add_argument('--logp_ratio', type=float, default=0)
+    parser.add_argument('--qed_ratio', type=float, default=0)
+    parser.add_argument('--sa_ratio', type=float, default=0)
     parser.add_argument('--gan_step_ratio', type=float, default=1)
     parser.add_argument('--gan_final_ratio', type=float, default=1)
     parser.add_argument('--reward_step_total', type=float, default=0.5)
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--has_d_step', type=int, default=1)
-    parser.add_argument('--has_d_final', type=int, default=1)
+    parser.add_argument('--has_d_step', type=int, default=0)
+    parser.add_argument('--has_d_final', type=int, default=0)
     parser.add_argument('--rl_start', type=int, default=250)
     parser.add_argument('--rl_end', type=int, default=int(1e6))
     parser.add_argument('--expert_start', type=int, default=0)
@@ -103,6 +103,18 @@ def molecule_arg_parser():
 
     return parser
 
+def get_args():
+    """Get args for configuration.
+
+    Returns
+    -------
+    args : dict
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(description='GCPN-DGL')
+    parser.add_argument('-rl', '--rl', action='store_true')
+
 def log_time(time):
     day = time // (24 * 3600)
     time %= (24 * 3600)
@@ -114,10 +126,10 @@ def log_time(time):
     print("d:h:m:s-> %d:%d:%d:%d" % (day, hour, minutes, seconds))
 
 def main():
-    args = molecule_arg_parser().parse_args()
+    args = molecule_arg_parser().parse_args().__dict__
     print(args)
-    args.name_full = args.env + '_' + args.dataset + '_' + args.name
-    args.name_full_load = args.env + '_' + args.dataset
+    args['name_full'] = args['env'] + '_' + args['dataset'] + '_' + args['name']
+    args['name_full_load'] = args['env'] + '_' + args['dataset']
     # check and clean
     if not os.path.exists('molecule_gen'):
         os.makedirs('molecule_gen')
@@ -126,12 +138,12 @@ def main():
 
     # only keep first worker result in tensorboard
     if MPI.COMM_WORLD.Get_rank() == 0:
-        writer = SummaryWriter(comment='_'+args.dataset+'_'+args.name)
+        writer = SummaryWriter(comment='_' + args['dataset'] + '_' + args['name'])
     else:
         writer = None
 
     t_start = time.time()
-    train(args,seed=args.seed,writer=writer)
+    train(args, seed=args['seed'], writer=writer)
     t_end = time.time()
     log_time(t_end - t_start)
 
