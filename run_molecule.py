@@ -99,7 +99,7 @@ def molecule_arg_parser():
     parser.add_argument('--conditional', type=str, default='low') # default 0
     parser.add_argument('--max_action', type=int, default=128) # default 0
     parser.add_argument('--min_action', type=int, default=20) # default 0
-    parser.add_argument('--bn', type=int, default=0)
+    parser.add_argument('--bn', type=int, default=1)
 
     return parser
 

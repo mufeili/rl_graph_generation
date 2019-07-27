@@ -47,15 +47,25 @@ def emb_node(ob_node,out_channels):
 def discriminator_net(ob,args,name='d_net'):
     with tf.variable_scope(name,reuse=tf.AUTO_REUSE):
         ob_node = tf.layers.dense(ob['node'], 8, activation=None, use_bias=False, name='emb')  # embedding layer
+        if args['bn'] == 1:
+            ob_node = tf.layers.batch_normalization(ob_node,axis=-1)
         emb_node = GCN_batch(ob['adj'], ob_node, args['emb_size'], name='gcn1',aggregate=args['gcn_aggregate'])
         for i in range(args['layer_num_d'] - 2):
+            if args['bn'] == 1:
+                emb_node = tf.layers.batch_normalization(emb_node,axis=-1)
             emb_node = GCN_batch(ob['adj'], emb_node, args['emb_size'], name='gcn1_'+str(i+1),
                                  aggregate=args['gcn_aggregate'])
+        if args['bn'] == 1:
+            emb_node = tf.layers.batch_normalization(emb_node,axis=-1)
         emb_node = GCN_batch(ob['adj'], emb_node, args['emb_size'], is_act=False, is_normalize=(args['bn'] == 0),
                              name='gcn2',aggregate=args['gcn_aggregate'])
+        if args['bn'] == 1:
+            emb_node = tf.layers.batch_normalization(emb_node,axis=-1)
         emb_node = tf.layers.dense(emb_node, args['emb_size'], activation=tf.nn.relu, use_bias=False, name='linear1')
+        if args['bn'] == 1:
+            emb_node = tf.layers.batch_normalization(emb_node,axis=-1)
 
-        if args['gate_sum_d']==1:
+        if args['gate_sum_d'] ==1 :
             emb_node_gate = tf.layers.dense(emb_node,1,activation=tf.nn.sigmoid,name='gate')
             emb_graph = tf.reduce_sum(tf.squeeze(emb_node*emb_node_gate, axis=1),axis=1)  # B*f
         else:
@@ -186,8 +196,7 @@ class GCNPolicy(object):
         self.logits_edge = tf.layers.dense(emb_cat, args['emb_size'], activation=tf.nn.relu, name='logits_edge1')
         self.logits_edge = tf.layers.dense(self.logits_edge, ob['adj'].get_shape()[1], activation=None, name='logits_edge2')
         self.logits_edge = tf.squeeze(self.logits_edge,axis=1)
-        # # bilinear
-        # self.logits_edge = tf.reshape(bilinear_multi(emb_first,emb_second,out_dim=ob['adj'].get_shape()[1]),[-1,ob['adj'].get_shape()[1]])
+
         pd_edge = CategoricalPdType(-1).pdfromflat(self.logits_edge)
         ac_edge = pd_edge.sample()
 
@@ -199,12 +208,7 @@ class GCNPolicy(object):
         self.logits_edge_real = tf.layers.dense(self.logits_edge_real, ob['adj'].get_shape()[1], activation=None,
                                            name='logits_edge2', reuse=True)
         self.logits_edge_real = tf.squeeze(self.logits_edge_real, axis=1)
-        # # bilinear
-        # self.logits_edge_real = tf.reshape(bilinear_multi(emb_first_real, emb_second_real, out_dim=ob['adj'].get_shape()[1]),
-        #                               [-1, ob['adj'].get_shape()[1]])
 
-
-        # ncat_list = [tf.shape(logits_first),ob_space['adj'].shape[-1],ob_space['adj'].shape[0]]
         self.pd = self.pdtype(-1).pdfromflat([self.logits_first, self.logits_second_real,
                                               self.logits_edge_real,self.logits_stop])
         self.vpred = tf.layers.dense(emb_node, args['emb_size'], use_bias=False, activation=tf.nn.relu, name='value1')
