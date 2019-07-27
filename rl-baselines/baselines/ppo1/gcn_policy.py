@@ -249,20 +249,11 @@ class GCNPolicy(object):
 
 def GCN_emb(ob,args):
     ob_node = tf.layers.dense(ob['node'], 8, activation=None, use_bias=False, name='emb')  # embedding layer
-    if args['has_concat'] == 1:
-        emb_node1 = tf.concat(
-            (GCN_batch(ob['adj'], ob_node, args['emb_size'], name='gcn1', aggregate=args['gcn_aggregate']), ob_node),
-            axis=-1)
-    else:
-        emb_node1 = GCN_batch(ob['adj'], ob_node, args['emb_size'], name='gcn1', aggregate=args['gcn_aggregate'])
+    emb_node1 = GCN_batch(ob['adj'], ob_node, args['emb_size'], name='gcn1', aggregate=args['gcn_aggregate'])
     for i in range(args['layer_num_g'] - 2):
         if args['has_residual'] == 1:
             emb_node1 = GCN_batch(ob['adj'], emb_node1, args['emb_size'], name='gcn1_' + str(i + 1),
                                        aggregate=args['gcn_aggregate']) + emb_node1
-        elif args['has_concat'] == 1:
-            emb_node1 = tf.concat((GCN_batch(ob['adj'], emb_node1, args['emb_size'],
-                                                  name='gcn1_' + str(i + 1), aggregate=args['gcn_aggregate']),
-                                        emb_node1), axis=-1)
         else:
             emb_node1 = GCN_batch(ob['adj'], emb_node1, args['emb_size'], name='gcn1_' + str(i + 1),
                                        aggregate=args['gcn_aggregate'])
