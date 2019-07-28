@@ -647,14 +647,14 @@ class MoleculeEnv(gym.Env):
                 edge_sample = edge_sample[0] # get value
                 ### get action
                 if edge_sample[0] in graph_sub.nodes() and edge_sample[1] in graph_sub.nodes():
-                    node1 = graph_sub.nodes().index(edge_sample[0])
-                    node2 = graph_sub.nodes().index(edge_sample[1])
+                    node1 = list(graph_sub.nodes()).index(edge_sample[0])
+                    node2 = list(graph_sub.nodes()).index(edge_sample[1])
                 elif edge_sample[0] in graph_sub.nodes():
-                    node1 = graph_sub.nodes().index(edge_sample[0])
+                    node1 = list(graph_sub.nodes()).index(edge_sample[0])
                     node2 = np.argmax(
                         graph.node[edge_sample[1]]['symbol'] == self.possible_atom_types) + graph_sub.number_of_nodes()
                 elif edge_sample[1] in graph_sub.nodes():
-                    node1 = graph_sub.nodes().index(edge_sample[1])
+                    node1 = list(graph_sub.nodes()).index(edge_sample[1])
                     node2 = np.argmax(
                         graph.node[edge_sample[0]]['symbol'] == self.possible_atom_types) + graph_sub.number_of_nodes()
                 else:
@@ -691,8 +691,8 @@ class MoleculeEnv(gym.Env):
             for j in range(bond_type_num):
                 ob['adj'][i, j, :n + atom_type_num, :n + atom_type_num] = np.eye(n + atom_type_num)
             for edge in graph_sub.edges():
-                begin_idx = graph_sub.nodes().index(edge[0])
-                end_idx = graph_sub.nodes().index(edge[1])
+                begin_idx = list(graph_sub.nodes()).index(edge[0])
+                end_idx = list(graph_sub.nodes()).index(edge[1])
                 bond_type = graph[edge[0]][edge[1]]['bond_type']
                 float_array = (bond_type == self.possible_bond_types).astype(float)
                 assert float_array.sum() != 0

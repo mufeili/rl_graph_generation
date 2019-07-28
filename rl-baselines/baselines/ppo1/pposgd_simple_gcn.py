@@ -474,11 +474,14 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
 
         if writer is not None:
             writer.add_scalar("loss_teacher_forcing", loss_expert, iters_so_far)
+            writer.add_scalar("policy_loss", mean_policy_loss, iters_so_far)
             if args['has_d_step']:
                 writer.add_scalar("loss_d_step", loss_d_step, iters_so_far)
             if args['has_d_final']:
-                giwriter.add_scalar("loss_d_final", loss_d_final, iters_so_far)
+                writer.add_scalar("loss_d_final", loss_d_final, iters_so_far)
             writer.add_scalar('lr', init_lr * cur_lrmult, iters_so_far)
+            writer.add_scalar("TimeElapsed", time.time() - tstart, iters_so_far)
+            writer.add_scalar("level", level, iters_so_far)
 
         if args['rl']:
             lrlocal = (seg["ep_lens"], seg["ep_lens_valid"], seg["ep_rets"], seg["ep_rets_env"], seg["ep_rets_d_step"],
@@ -502,18 +505,17 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                 writer.add_scalar("EpThisIter", len(lens), iters_so_far)
                 writer.add_scalar("EpisodesSoFar", episodes_so_far, iters_so_far)
                 writer.add_scalar("TimestepsSoFar", timesteps_so_far, iters_so_far)
+                writer.add_scalar("EpLenMean", np.mean(lenbuffer), iters_so_far)
+                writer.add_scalar("EpLenValidMean", np.mean(lenbuffer_valid), iters_so_far)
+                writer.add_scalar("EpRewMean", np.mean(rewbuffer), iters_so_far)
+                writer.add_scalar("EpRewEnvMean", np.mean(rewbuffer_env), iters_so_far)
+                writer.add_scalar("EpRewFinalMean", np.mean(rewbuffer_final), iters_so_far)
+                writer.add_scalar("EpRewFinalStatMean", np.mean(rewbuffer_final_stat), iters_so_far)
 
-        if writer is not None:
-            writer.add_scalar("EpLenMean", np.mean(lenbuffer), iters_so_far)
-            writer.add_scalar("EpLenValidMean", np.mean(lenbuffer_valid), iters_so_far)
-            writer.add_scalar("EpRewMean", np.mean(rewbuffer), iters_so_far)
-            writer.add_scalar("EpRewDStepMean", np.mean(rewbuffer_d_step), iters_so_far)
-            writer.add_scalar("EpRewDFinalMean", np.mean(rewbuffer_d_final), iters_so_far)
-            writer.add_scalar("EpRewEnvMean", np.mean(rewbuffer_env), iters_so_far)
-            writer.add_scalar("EpRewFinalMean", np.mean(rewbuffer_final), iters_so_far)
-            writer.add_scalar("EpRewFinalStatMean", np.mean(rewbuffer_final_stat), iters_so_far)
-            writer.add_scalar("TimeElapsed", time.time() - tstart, iters_so_far)
-            writer.add_scalar("level", level, iters_so_far)
+                if args['has_d_step']:
+                    writer.add_scalar("EpRewDStepMean", np.mean(rewbuffer_d_step), iters_so_far)
+                if args['has_d_final']:
+                    writer.add_scalar("EpRewDFinalMean", np.mean(rewbuffer_d_final), iters_so_far)
 
         if MPI.COMM_WORLD.Get_rank() == 0:
             with open('molecule_gen/' + args['name_full'] + '.csv', 'a') as f:
