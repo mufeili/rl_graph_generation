@@ -361,6 +361,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
         print('model saved!', checkpoint_path)
 
     if evaluator is not None:
+        checkpoint()
         evaluator(pi, n_samples=128, checkpoint_path=checkpoint_path)
 
     best_loss = float('inf')
