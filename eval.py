@@ -83,7 +83,7 @@ class Evaluator(object):
             'SAS': self.data_SAS
         }
 
-    def __call__(self, policy, n_samples=None, final=False):
+    def __call__(self, policy, checkpoint_path, n_samples=None, final=False):
         path = os.path.join(self.root_dir, 'generation_evaluation', str(self.n_eval))
         mkdir_p(path)
         reference_smiles = self.data_info['valid_smiles'].tolist()
@@ -96,6 +96,10 @@ class Evaluator(object):
         smiles = []
 
         with tf.Session() as sess:
+            var_list_pi = policy.get_trainable_variables()
+            saver = tf.train.Saver(var_list_pi)
+            saver.restore(sess, checkpoint_path)
+
             while len(smiles) < n_samples:
                 print('Generating the molecule {:d}/{:d}'.format(len(smiles) + 1, n_samples))
                 ob_t = self.env.reset()

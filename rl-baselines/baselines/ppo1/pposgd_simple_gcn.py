@@ -354,14 +354,14 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
     adam_d_step.sync()
     adam_d_final.sync()
 
+    checkpoint_path = './ckpt/' + args['name_full']
     def checkpoint():
-        fname = './ckpt/' + args['name_full']
         saver = tf.train.Saver(var_list_pi)
-        saver.save(tf.get_default_session(), fname)
-        print('model saved!', fname)
+        saver.save(tf.get_default_session(), checkpoint_path)
+        print('model saved!', checkpoint_path)
 
     if evaluator is not None:
-        evaluator(pi, n_samples=128)
+        evaluator(pi, n_samples=128, checkpoint_path=checkpoint_path)
 
     best_loss = float('inf')
     n_patient_rounds = 0
@@ -543,7 +543,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
             current_time = time.time()
 
             if (evaluator is not None) and ((current_time - last_evaluation_time) > check_interval):
-                evaluator(pi, n_samples=128)
+                evaluator(pi, n_samples=128, checkpoint_path=checkpoint_path)
                 last_evaluation_time = time.time()
         else:
             n_patient_rounds += 1
