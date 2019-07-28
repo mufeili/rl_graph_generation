@@ -37,7 +37,7 @@ def train(args, seed, writer=None):
 
     pposgd_simple_gcn.learn(args, env,
         max_time_steps=args['num_steps'],
-        timesteps_per_actorbatch=256,
+        horizon=256,
         clip_param=0.2, entropy_coef=0.01,
         optim_epochs=8, init_lr=args['lr'], optim_batchsize=32,
         gamma=1, lam=0.95,
@@ -101,18 +101,6 @@ def molecule_arg_parser():
     parser.add_argument('--bn', type=int, default=1)
 
     return parser
-
-def get_args():
-    """Get args for configuration.
-
-    Returns
-    -------
-    args : dict
-    """
-    import argparse
-
-    parser = argparse.ArgumentParser(description='GCPN-DGL')
-    parser.add_argument('-rl', '--rl', action='store_true')
 
 def log_time(time):
     day = time // (24 * 3600)

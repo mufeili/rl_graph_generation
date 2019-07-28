@@ -181,7 +181,7 @@ def add_vtarg_and_adv(seg, gamma, lam):
         gaelam[t] = lastgaelam = delta + gamma * lam * nonterminal * lastgaelam
     seg["tdlamret"] = seg["adv"] + seg["vpred"]
 
-def learn(args, env, evaluator, max_time_steps, horizon,
+def learn(args, env, evaluator, horizon, max_time_steps=0,
           max_episodes=0, max_iters=0, max_seconds=0,
           init_lr=0.001, clip_param=0.2, entropy_coef=0.01, optim_epochs=8,
           optim_batchsize=32, gamma=1, lam=0.95, adam_epsilon=1e-5,
@@ -220,11 +220,13 @@ def learn(args, env, evaluator, max_time_steps, horizon,
                    ac_space=ac_space,
                    atom_type_num=env.atom_type_num,
                    args=args)
-    old_pi = GCNPolicy(name="old_pi",
-                       ob_space=ob_space,
-                       ac_space=ac_space,
-                       atom_type_num=env.atom_type_num,
-                       args=args)
+
+    if args['rl']:
+        old_pi = GCNPolicy(name="old_pi",
+                           ob_space=ob_space,
+                           ac_space=ac_space,
+                           atom_type_num=env.atom_type_num,
+                           args=args)
 
     atarg = tf.placeholder(dtype=tf.float32, shape=[None]) # Target advantage function (if applicable)
     ret = tf.placeholder(dtype=tf.float32, shape=[None]) # Empirical return
@@ -294,12 +296,14 @@ def learn(args, env, evaluator, max_time_steps, horizon,
     ## loss update function
     lossandgrad_ppo = U.function([ob['adj'], ob['node'], ac, pi.ac_real, old_pi.ac_real, atarg, ret, lrmult], losses + [U.flatgrad(total_loss, var_list_pi)])
     lossandgrad_expert = U.function([ob['adj'], ob['node'], ac, pi.ac_real], [loss_expert, U.flatgrad(loss_expert, var_list_pi)])
+    lossandgrad_expert_stop = U.function([ob['adj'], ob['node'], ac, pi.ac_real], [loss_expert, U.flatgrad(loss_expert, var_list_pi_stop)])
     lossandgrad_d_step = U.function([ob_real['adj'], ob_real['node'], ob_gen['adj'], ob_gen['node']], [loss_d_step, U.flatgrad(loss_d_step, var_list_d_step)])
     lossandgrad_d_final = U.function([ob_real['adj'], ob_real['node'], ob_gen['adj'], ob_gen['node']], [loss_d_final, U.flatgrad(loss_d_final, var_list_d_final)])
     loss_g_gen_step_func = U.function([ob_gen['adj'], ob_gen['node']], loss_g_step_gen)
     loss_g_gen_final_func = U.function([ob_gen['adj'], ob_gen['node']], loss_g_final_gen)
 
     adam_pi = MpiAdam(var_list_pi, epsilon=adam_epsilon)
+    adam_pi_stop = MpiAdam(var_list_pi_stop, epsilon=adam_epsilon)
     adam_d_step = MpiAdam(var_list_d_step, epsilon=adam_epsilon)
     adam_d_final = MpiAdam(var_list_d_final, epsilon=adam_epsilon)
 
@@ -323,7 +327,9 @@ def learn(args, env, evaluator, max_time_steps, horizon,
     rewbuffer_final = deque(maxlen=100) # rolling buffer for episode rewards
     rewbuffer_final_stat = deque(maxlen=100) # rolling buffer for episode rewardsn
 
-    seg_gen = trajectory_segment_generator(args, pi, env, horizon, True, loss_g_gen_step_func,loss_g_gen_final_func)
+    if args['rl']:
+        seg_gen = trajectory_segment_generator(args, pi, env, horizon, True, loss_g_gen_step_func,
+                                               loss_g_gen_final_func)
 
     assert sum([max_iters>0, max_time_steps>0, max_episodes>0, max_seconds>0])==1, "Only one time constraint permitted"
     if args['load']==1:
@@ -339,6 +345,7 @@ def learn(args, env, evaluator, max_time_steps, horizon,
 
     U.initialize()
     adam_pi.sync()
+    adam_pi_stop.sync()
     adam_d_step.sync()
     adam_d_final.sync()
 
@@ -361,18 +368,20 @@ def learn(args, env, evaluator, max_time_steps, horizon,
         else:
             raise NotImplementedError
 
-        seg = seg_gen.__next__()
-        add_vtarg_and_adv(seg, gamma, lam)
-        ob_adj, ob_node, ac, atarg, tdlamret = seg["ob_adj"], seg["ob_node"], seg["ac"], seg["adv"], seg["tdlamret"]
-        vpredbefore = seg["vpred"]  # predicted value function before udpate
-        atarg = (atarg - atarg.mean()) / atarg.std()  # standardized advantage function estimate
-        d = Dataset(dict(ob_adj=ob_adj, ob_node=ob_node, ac=ac, atarg=atarg, vtarg=tdlamret),
-                    shuffle=not pi.recurrent)
-        optim_batchsize = optim_batchsize or ob_adj.shape[0]
+        if args['rl']:
+            seg = seg_gen.__next__()
+            add_vtarg_and_adv(seg, gamma, lam)
+            ob_adj, ob_node, ac, atarg, tdlamret = seg["ob_adj"], seg["ob_node"], seg["ac"], seg["adv"], seg["tdlamret"]
+            vpredbefore = seg["vpred"]  # predicted value function before udpate
+            atarg = (atarg - atarg.mean()) / atarg.std()  # standardized advantage function estimate
+            d = Dataset(dict(ob_adj=ob_adj, ob_node=ob_node, ac=ac, atarg=atarg, vtarg=tdlamret),
+                        shuffle=not pi.recurrent)
+            optim_batchsize = optim_batchsize or ob_adj.shape[0]
 
         # inner training loop, train policy
         for i_optim in range(optim_epochs):
             loss_expert=0
+            loss_expert_stop = 0
             g_expert=0
             g_expert_stop=0
 
@@ -391,40 +400,54 @@ def learn(args, env, evaluator, max_time_steps, horizon,
                 loss_expert, g_expert = lossandgrad_expert(ob_expert['adj'], ob_expert['node'], ac_expert, ac_expert)
                 loss_expert = np.mean(loss_expert)
 
-            if iters_so_far>=args['rl_start'] and iters_so_far<=args['rl_end']:
-                assign_old_eq_new() # set old parameter values to new parameter values
-                batch = d.next_batch(optim_batchsize)
-                # ppo
-                if iters_so_far >= args['rl_start']+pretrain_shift: # start generator after discriminator trained a well..
-                    *newlosses, g_ppo = lossandgrad_ppo(batch["ob_adj"], batch["ob_node"], batch["ac"], batch["ac"], batch["ac"], batch["atarg"], batch["vtarg"], cur_lrmult)
+            if args['rl']:
+                if iters_so_far >= args['rl_start'] and iters_so_far <= args['rl_end']:
+                    assign_old_eq_new()  # set old parameter values to new parameter values
+                    batch = d.next_batch(optim_batchsize)
+                    # ppo
+                    if iters_so_far >= args[
+                        'rl_start'] + pretrain_shift:  # start generator after discriminator trained a well..
+                        *newlosses, g_ppo = lossandgrad_ppo(batch["ob_adj"], batch["ob_node"], batch["ac"], batch["ac"],
+                                                            batch["ac"], batch["atarg"], batch["vtarg"], cur_lrmult)
 
-                if args['has_d_step']==1 and i_optim>=optim_epochs//2:
-                    # update step discriminator
-                    ob_expert, _ = env.get_expert(optim_batchsize,curriculum=args['curriculum'],
-                                                  level_total=args['curriculum_num'],level=level)
-                    loss_d_step, g_d_step = lossandgrad_d_step(ob_expert["adj"], ob_expert["node"], batch["ob_adj"], batch["ob_node"])
-                    adam_d_step.update(g_d_step, init_lr * cur_lrmult)
-                    loss_d_step = np.mean(loss_d_step)
+                    if args['has_d_step'] == 1 and i_optim >= optim_epochs // 2:
+                        # update step discriminator
+                        ob_expert, _ = env.get_expert(optim_batchsize, curriculum=args['curriculum'],
+                                                      level_total=args['curriculum_num'], level=level)
+                        loss_d_step, g_d_step = lossandgrad_d_step(ob_expert["adj"], ob_expert["node"], batch["ob_adj"],
+                                                                   batch["ob_node"])
+                        adam_d_step.update(g_d_step, init_lr * cur_lrmult)
+                        loss_d_step = np.mean(loss_d_step)
 
-                if args['has_d_final']==1 and i_optim>=optim_epochs//4*3:
-                    # update final discriminator
-                    ob_expert, _ = env.get_expert(optim_batchsize, is_final=True, curriculum=args['curriculum'],
-                                                  level_total=args['curriculum_num'], level=level)
-                    seg_final_adj, seg_final_node = traj_final_generator(pi, copy.deepcopy(env), optim_batchsize,True)
-                    # update final discriminator
-                    loss_d_final, g_d_final = lossandgrad_d_final(ob_expert["adj"], ob_expert["node"], seg_final_adj, seg_final_node)
-                    adam_d_final.update(g_d_final, init_lr * cur_lrmult)
+                    if args['has_d_final'] == 1 and i_optim >= optim_epochs // 4 * 3:
+                        # update final discriminator
+                        ob_expert, _ = env.get_expert(optim_batchsize, is_final=True, curriculum=args['curriculum'],
+                                                      level_total=args['curriculum_num'], level=level)
+                        seg_final_adj, seg_final_node = traj_final_generator(pi, copy.deepcopy(env), optim_batchsize,
+                                                                             True)
+                        # update final discriminator
+                        loss_d_final, g_d_final = lossandgrad_d_final(ob_expert["adj"], ob_expert["node"],
+                                                                      seg_final_adj, seg_final_node)
+                        adam_d_final.update(g_d_final, init_lr * cur_lrmult)
 
             # update generator
-            adam_pi.update(0.2*g_ppo+0.05*g_expert, init_lr * cur_lrmult)
-            adam_pi.update(g_expert, init_lr * cur_lrmult)
+            # adam_pi.update(0.2*g_ppo+0.05*g_expert, init_lr * cur_lrmult)
+            adam_pi.update(0.25 * g_expert, init_lr * cur_lrmult)
 
-        ## PPO val
-        losses = []
-        for batch in d.iterate_once(optim_batchsize):
-            newlosses = compute_losses(batch["ob_adj"],batch["ob_node"], batch["ac"], batch["ac"], batch["ac"], batch["atarg"], batch["vtarg"], cur_lrmult)
-            losses.append(newlosses)
-        meanlosses,_,_ = mpi_moments(losses, axis=0)
+        if args['rl']:
+            ## PPO val
+            losses = []
+            for batch in d.iterate_once(optim_batchsize):
+                newlosses = compute_losses(batch["ob_adj"], batch["ob_node"], batch["ac"], batch["ac"], batch["ac"],
+                                           batch["atarg"], batch["vtarg"], cur_lrmult)
+                losses.append(newlosses)
+            meanlosses, _, _ = mpi_moments(losses, axis=0)
+            for (lossval, name) in zipsame(meanlosses, loss_names):
+                if writer is not None:
+                    writer.add_scalar("loss_" + name, lossval, iters_so_far)
+
+            if writer is not None:
+                writer.add_scalar("ev_tdlam_before", explained_variance(vpredbefore, tdlamret), iters_so_far)
 
         if writer is not None:
             writer.add_scalar("loss_teacher_forcing", loss_expert, iters_so_far)
@@ -432,38 +455,38 @@ def learn(args, env, evaluator, max_time_steps, horizon,
             writer.add_scalar("loss_d_final", loss_d_final, iters_so_far)
             writer.add_scalar('lr', init_lr * cur_lrmult, iters_so_far)
 
-        for (lossval, name) in zipsame(meanlosses, loss_names):
-            if writer is not None:
-                writer.add_scalar("loss_"+name, lossval, iters_so_far)
-        if writer is not None:
-            writer.add_scalar("ev_tdlam_before", explained_variance(vpredbefore, tdlamret), iters_so_far)
+        if args['rl']:
+            lrlocal = (seg["ep_lens"], seg["ep_lens_valid"], seg["ep_rets"], seg["ep_rets_env"], seg["ep_rets_d_step"],
+                       seg["ep_rets_d_final"], seg["ep_final_rew"], seg["ep_final_rew_stat"])  # local values
+            listoflrpairs = MPI.COMM_WORLD.allgather(lrlocal)  # list of tuples
+            lens, lens_valid, rews, rews_env, rews_d_step, rews_d_final, rews_final, rews_final_stat = map(
+                flatten_lists, zip(*listoflrpairs))
+            lenbuffer.extend(lens)
+            lenbuffer_valid.extend(lens_valid)
+            rewbuffer.extend(rews)
+            rewbuffer_d_step.extend(rews_d_step)
+            rewbuffer_d_final.extend(rews_d_final)
+            rewbuffer_env.extend(rews_env)
+            rewbuffer_final.extend(rews_final)
+            rewbuffer_final_stat.extend(rews_final_stat)
 
-        lrlocal = (seg["ep_lens"],seg["ep_lens_valid"], seg["ep_rets"],seg["ep_rets_env"],seg["ep_rets_d_step"],seg["ep_rets_d_final"],seg["ep_final_rew"],seg["ep_final_rew_stat"]) # local values
-        listoflrpairs = MPI.COMM_WORLD.allgather(lrlocal) # list of tuples
-        lens, lens_valid, rews, rews_env, rews_d_step,rews_d_final, rews_final,rews_final_stat = map(flatten_lists, zip(*listoflrpairs))
-        lenbuffer.extend(lens)
-        lenbuffer_valid.extend(lens_valid)
-        rewbuffer.extend(rews)
-        rewbuffer_d_step.extend(rews_d_step)
-        rewbuffer_d_final.extend(rews_d_final)
-        rewbuffer_env.extend(rews_env)
-        rewbuffer_final.extend(rews_final)
-        rewbuffer_final_stat.extend(rews_final_stat)
+            episodes_so_far += len(lens)
+            timesteps_so_far += sum(lens)
+
+            if writer is not None:
+                writer.add_scalar("EpThisIter", len(lens), iters_so_far)
+                writer.add_scalar("EpisodesSoFar", episodes_so_far, iters_so_far)
+                writer.add_scalar("TimestepsSoFar", timesteps_so_far, iters_so_far)
+
         if writer is not None:
-            writer.add_scalar("EpLenMean", np.mean(lenbuffer),iters_so_far)
-            writer.add_scalar("EpLenValidMean", np.mean(lenbuffer_valid),iters_so_far)
-            writer.add_scalar("EpRewMean", np.mean(rewbuffer),iters_so_far)
+            writer.add_scalar("EpLenMean", np.mean(lenbuffer), iters_so_far)
+            writer.add_scalar("EpLenValidMean", np.mean(lenbuffer_valid), iters_so_far)
+            writer.add_scalar("EpRewMean", np.mean(rewbuffer), iters_so_far)
             writer.add_scalar("EpRewDStepMean", np.mean(rewbuffer_d_step), iters_so_far)
             writer.add_scalar("EpRewDFinalMean", np.mean(rewbuffer_d_final), iters_so_far)
-            writer.add_scalar("EpRewEnvMean", np.mean(rewbuffer_env),iters_so_far)
-            writer.add_scalar("EpRewFinalMean", np.mean(rewbuffer_final),iters_so_far)
-            writer.add_scalar("EpRewFinalStatMean", np.mean(rewbuffer_final_stat),iters_so_far)
-            writer.add_scalar("EpThisIter", len(lens), iters_so_far)
-        episodes_so_far += len(lens)
-        timesteps_so_far += sum(lens)
-        if writer is not None:
-            writer.add_scalar("EpisodesSoFar", episodes_so_far, iters_so_far)
-            writer.add_scalar("TimestepsSoFar", timesteps_so_far, iters_so_far)
+            writer.add_scalar("EpRewEnvMean", np.mean(rewbuffer_env), iters_so_far)
+            writer.add_scalar("EpRewFinalMean", np.mean(rewbuffer_final), iters_so_far)
+            writer.add_scalar("EpRewFinalStatMean", np.mean(rewbuffer_final_stat), iters_so_far)
             writer.add_scalar("TimeElapsed", time.time() - tstart, iters_so_far)
             writer.add_scalar("level", level, iters_so_far)
 

@@ -124,11 +124,10 @@ class GCNPolicy(object):
         ### 2 predict stop
         emb_stop = tf.layers.dense(emb_node, args['emb_size'], activation=tf.nn.relu, use_bias=False,
                                    name='linear_stop1')
+        if args['bn'] == 1:
+            emb_stop = tf.layers.batch_normalization(emb_stop, axis=-1)
         self.logits_stop = tf.reduce_sum(emb_stop,axis=1)
         self.logits_stop = tf.layers.dense(self.logits_stop, 2, activation=None, name='linear_stop2_1')  # B*2
-        # explicitly show node num
-        # self.logits_stop = tf.concat((tf.reduce_mean(tf.layers.dense(emb_node, 32, activation=tf.nn.relu, name='linear_stop1'),axis=1),tf.reshape(ob_len_first/5,[-1,1])),axis=1)
-        # self.logits_stop = tf.layers.dense(self.logits_stop, 2, activation=None, name='linear_stop2')  # B*2
 
         stop_shift = tf.constant([[0, args['stop_shift']]],dtype=tf.float32)
         pd_stop = CategoricalPdType(-1).pdfromflat(flat=self.logits_stop+stop_shift)
@@ -218,6 +217,8 @@ class GCNPolicy(object):
         self.pd = self.pdtype(-1).pdfromflat([self.logits_first, self.logits_second_real,
                                               self.logits_edge_real,self.logits_stop])
         self.vpred = tf.layers.dense(emb_node, args['emb_size'], use_bias=False, activation=tf.nn.relu, name='value1')
+        if args['bn'] == 1:
+            self.vpred = tf.layers.batch_normalization(self.vpred, axis=-1)
         self.vpred = tf.reduce_max(self.vpred,axis=1)
         self.vpred = tf.layers.dense(self.vpred, 1, activation=None, name='value2')
 
@@ -233,6 +234,7 @@ class GCNPolicy(object):
         debug['emb_node'] = emb_node
         debug['logits_stop'] = self.logits_stop
         debug['logits_second'] = self.logits_second
+        debug['ob_len'] = ob_len
         debug['logits_first_mask'] = logits_first_mask
         debug['logits_second_mask'] = logits_second_mask
         # debug['pd'] = self.pd.logp(self.ac)
@@ -251,27 +253,6 @@ class GCNPolicy(object):
         return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self.scope)
     def get_initial_state(self):
         return []
-
-
-def GCN_emb(ob,args):
-    ob_node = tf.layers.dense(ob['node'], 8, activation=None, use_bias=False, name='emb')  # embedding layer
-    emb_node1 = GCN_batch(ob['adj'], ob_node, args['emb_size'], name='gcn1', aggregate=args['gcn_aggregate'])
-    for i in range(args['layer_num_g'] - 2):
-        if args['has_residual'] == 1:
-            emb_node1 = GCN_batch(ob['adj'], emb_node1, args['emb_size'], name='gcn1_' + str(i + 1),
-                                       aggregate=args['gcn_aggregate']) + emb_node1
-        else:
-            emb_node1 = GCN_batch(ob['adj'], emb_node1, args['emb_size'], name='gcn1_' + str(i + 1),
-                                       aggregate=args['gcn_aggregate'])
-    emb_node2 = GCN_batch(ob['adj'], emb_node1, args['emb_size'], is_act=False, is_normalize=True,
-                          name='gcn2', aggregate=args['gcn_aggregate'])
-    emb_node = tf.squeeze(emb_node2, axis=1)  # B*n*f
-    emb_graph = tf.reduce_max(emb_node, axis=1, keepdims=True)
-    if args['graph_emb'] == 1:
-        emb_graph = tf.tile(emb_graph, [1, tf.shape(emb_node)[1], 1])
-        emb_node = tf.concat([emb_node, emb_graph], axis=2)
-    return emb_node
-
 
 #### debug
 
