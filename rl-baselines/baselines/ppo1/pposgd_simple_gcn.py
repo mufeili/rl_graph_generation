@@ -520,15 +520,10 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
         if MPI.COMM_WORLD.Get_rank() == 0:
             with open('molecule_gen/' + args['name_full'] + '.csv', 'a') as f:
                 f.write('***** Iteration {} *****\n'.format(iters_so_far))
-            # save
-            if iters_so_far % args['save_every'] == 0:
-                fname = './ckpt/' + args['name_full'] + '_' + str(iters_so_far)
-                saver = tf.train.Saver(var_list_pi)
-                saver.save(tf.get_default_session(), fname)
-                print('model saved!',fname)
 
         if mean_policy_loss < best_loss:
-            checkpoint()
+            if MPI.COMM_WORLD.Get_rank() == 0:
+                checkpoint()
             best_loss = mean_policy_loss
             n_patient_rounds = 0
             current_time = time.time()
