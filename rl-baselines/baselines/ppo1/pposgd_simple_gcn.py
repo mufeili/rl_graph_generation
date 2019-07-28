@@ -46,7 +46,7 @@ def trajectory_segment_generator(args, pi, env, horizon, stochastic, d_step_func
 
     while True:
         prevac = ac
-        ac, vpred, debug = pi.act(stochastic, ob)
+        ac, vpred, debug = pi.act(stochastic, ob, training=True)
 
         # Slight weirdness here because we need value function at time T
         # before returning segment [0, T-1] so we get the correct
@@ -156,7 +156,7 @@ def traj_final_generator(pi, env, batch_size, stochastic):
     for i in range(batch_size):
         ob = env.reset()
         while True:
-            ac, vpred, debug = pi.act(stochastic, ob)
+            ac, vpred, debug = pi.act(stochastic, ob, training=True)
             ob, rew_env, new, info = env.step(ac)
             np.set_printoptions(precision=2, linewidth=200)
             if new:

@@ -102,7 +102,7 @@ class Evaluator(object):
                 ob_t = self.env.reset()
                 stop = False
                 while not stop:
-                    a_t, _, _ = policy.act(True, ob_t)
+                    a_t, _, _ = policy.act(True, ob_t, training=False)
                     ob_t, _, stop, info_t = self.env.step(a_t)
                 smiles.append(info_t['smile'])
         valid_smiles = get_valid_smiles(smiles)

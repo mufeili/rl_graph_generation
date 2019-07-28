@@ -97,19 +97,20 @@ class GCNPolicy(object):
         ### 0 Get input
         ob = {'adj': U.get_placeholder(name="adj", dtype=tf.float32, shape=[None,ob_space['adj'].shape[0],None,None]),
               'node': U.get_placeholder(name="node", dtype=tf.float32, shape=[None,1,None,ob_space['node'].shape[2]])}
+        training = tf.placeholder(dtype=tf.bool, shape=())
         # only when evaluating given action, at training time
         self.ac_real = U.get_placeholder(name='ac_real', dtype=tf.int64, shape=[None,4]) # feed groudtruth action
         ob_node = tf.layers.dense(ob['node'],8,activation=None,use_bias=False,name='emb') # embedding layer
         if args['bn'] == 1:
-            ob_node = tf.layers.batch_normalization(ob_node, axis=-1)
+            ob_node = tf.layers.batch_normalization(ob_node, axis=-1, training=training)
         emb_node = GCN_batch(ob['adj'], ob_node, args['emb_size'], name='gcn1', aggregate=args['gcn_aggregate'])
         if args['bn'] == 1:
-            emb_node = tf.layers.batch_normalization(emb_node, axis=-1)
+            emb_node = tf.layers.batch_normalization(emb_node, axis=-1, training=training)
         for i in range(args['layer_num_g']-2):
             emb_node = GCN_batch(ob['adj'], emb_node, args['emb_size'], name='gcn1_' + str(i + 1),
                                  aggregate=args['gcn_aggregate'])
             if args['bn'] == 1:
-                emb_node = tf.layers.batch_normalization(emb_node, axis=-1)
+                emb_node = tf.layers.batch_normalization(emb_node, axis=-1, training=training)
         emb_node = GCN_batch(ob['adj'], emb_node, args['emb_size'], is_act=False, is_normalize=(args['bn'] == 0),
                              name='gcn2',aggregate=args['gcn_aggregate'])
         emb_node = tf.squeeze(emb_node, axis=1)  # B*n*f
@@ -125,7 +126,7 @@ class GCNPolicy(object):
         emb_stop = tf.layers.dense(emb_node, args['emb_size'], activation=tf.nn.relu, use_bias=False,
                                    name='linear_stop1')
         if args['bn'] == 1:
-            emb_stop = tf.layers.batch_normalization(emb_stop, axis=-1)
+            emb_stop = tf.layers.batch_normalization(emb_stop, axis=-1, training=training)
         self.logits_stop = tf.reduce_sum(emb_stop,axis=1)
         self.logits_stop = tf.layers.dense(self.logits_stop, 2, activation=None, name='linear_stop2_1')  # B*2
 
@@ -218,7 +219,7 @@ class GCNPolicy(object):
                                               self.logits_edge_real,self.logits_stop])
         self.vpred = tf.layers.dense(emb_node, args['emb_size'], use_bias=False, activation=tf.nn.relu, name='value1')
         if args['bn'] == 1:
-            self.vpred = tf.layers.batch_normalization(self.vpred, axis=-1)
+            self.vpred = tf.layers.batch_normalization(self.vpred, axis=-1, training=training)
         self.vpred = tf.reduce_max(self.vpred,axis=1)
         self.vpred = tf.layers.dense(self.vpred, 1, activation=None, name='value2')
 
@@ -241,10 +242,10 @@ class GCNPolicy(object):
         debug['ac'] = self.ac
 
         stochastic = tf.placeholder(dtype=tf.bool, shape=())
-        self._act = U.function([stochastic, ob['adj'], ob['node']], [self.ac, self.vpred, debug]) # add debug in second arg if needed
+        self._act = U.function([stochastic, ob['adj'], ob['node'], training], [self.ac, self.vpred, debug]) # add debug in second arg if needed
 
-    def act(self, stochastic, ob):
-        return self._act(stochastic, ob['adj'][None], ob['node'][None])
+    def act(self, stochastic, ob, training):
+        return self._act(stochastic, ob['adj'][None], ob['node'][None], training)
         # return self._act(stochastic, ob['adj'], ob['node'])
 
     def get_variables(self):
