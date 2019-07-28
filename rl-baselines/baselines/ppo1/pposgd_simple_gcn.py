@@ -474,8 +474,10 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
 
         if writer is not None:
             writer.add_scalar("loss_teacher_forcing", loss_expert, iters_so_far)
-            writer.add_scalar("loss_d_step", loss_d_step, iters_so_far)
-            writer.add_scalar("loss_d_final", loss_d_final, iters_so_far)
+            if args['has_d_step']:
+                writer.add_scalar("loss_d_step", loss_d_step, iters_so_far)
+            if args['has_d_final']:
+                giwriter.add_scalar("loss_d_final", loss_d_final, iters_so_far)
             writer.add_scalar('lr', init_lr * cur_lrmult, iters_so_far)
 
         if args['rl']:
