@@ -382,9 +382,9 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
             cur_lrmult = 1.0
         elif schedule == 'linear':
             if args['rl']:
-                cur_lrmult = max(1.0 - float(iters_so_far) / max_time_steps, 0)
+                cur_lrmult = max(1.0 - float(timesteps_so_far) / max_time_steps, 0)
             else:
-                cur_lrmult =  max(1.0 - float(timesteps_so_far) / max_time_steps, 0)
+                cur_lrmult =  max(1.0 - float(iters_so_far) / max_time_steps, 0)
         else:
             raise NotImplementedError
 
