@@ -95,7 +95,7 @@ class Evaluator(object):
 
         smiles = []
 
-        with tf.Session() as sess:
+        with tf.get_default_session() as sess:
             var_list_pi = policy.get_trainable_variables()
             saver = tf.train.Saver(var_list_pi)
             saver.restore(sess, checkpoint_path)
