@@ -367,6 +367,12 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
     n_patient_rounds = 0
     last_evaluation_time = time.time()
     level = 0
+
+    if args['rl']:
+        check_interval = 1800
+    else:
+        check_interval = 360
+
     ## start training
     while True:
         if max_time_steps and timesteps_so_far >= max_time_steps:
@@ -536,7 +542,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
             n_patient_rounds = 0
             current_time = time.time()
 
-            if (evaluator is not None) and ((current_time - last_evaluation_time) > 1800):
+            if (evaluator is not None) and ((current_time - last_evaluation_time) > check_interval):
                 evaluator(pi, n_samples=1024)
                 last_evaluation_time = time.time()
         else:
