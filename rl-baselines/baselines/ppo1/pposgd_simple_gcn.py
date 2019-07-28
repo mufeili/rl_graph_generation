@@ -362,7 +362,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
 
     if evaluator is not None:
         checkpoint()
-        evaluator(pi, n_samples=128, checkpoint_path=checkpoint_path)
+        evaluator(pi, n_samples=1024, checkpoint_path=checkpoint_path)
 
     best_loss = float('inf')
     n_patient_rounds = 0
@@ -372,7 +372,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
     if args['rl']:
         check_interval = 1800
     else:
-        check_interval = 60
+        check_interval = 300
 
     ## start training
     while True:
@@ -544,7 +544,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
             current_time = time.time()
 
             if (evaluator is not None) and ((current_time - last_evaluation_time) > check_interval):
-                evaluator(pi, n_samples=128, checkpoint_path=checkpoint_path)
+                evaluator(pi, n_samples=1024, checkpoint_path=checkpoint_path)
                 last_evaluation_time = time.time()
         else:
             n_patient_rounds += 1
