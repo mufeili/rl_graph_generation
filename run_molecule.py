@@ -40,17 +40,23 @@ def train(args, seed, writer=None):
     print(env.observation_space)
     env.seed(workerseed)
 
-    evaluator = Evaluator('molecule_gen/', 'ZINC250K', env)
+    if rank == 0:
+        evaluator = Evaluator('molecule_gen/', 'ZINC250K', env)
+    else:
+        evaluator = None
+
     pi, var_list_pi = pposgd_simple_gcn.learn(args, env, evaluator,
                                               max_time_steps=args['num_steps'],
                                               horizon=256, clip_param=0.2, entropy_coef=0.01,
                                               optim_epochs=8, init_lr=args['lr'], optim_batchsize=32,
                                               gamma=1, lam=0.95, schedule='linear', writer=writer)
-    fname = './ckpt/' + args['name_full_load']
-    sess = tf.get_default_session()
-    saver = tf.train.Saver(var_list_pi)
-    saver.restore(sess, fname)
-    evaluator(pi, n_samples=10000, final=True)
+
+    if evaluator is not None:
+        fname = './ckpt/' + args['name_full_load']
+        sess = tf.get_default_session()
+        saver = tf.train.Saver(var_list_pi)
+        saver.restore(sess, fname)
+        evaluator(pi, n_samples=10000, final=True)
 
     env.close()
 

@@ -523,6 +523,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
             best_loss = mean_policy_loss
             n_patient_rounds = 0
             current_time = time.time()
+
             if (evaluator is not None) and ((current_time - last_evaluation_time) > 1800):
                 evaluator(pi, n_samples=1024)
                 last_evaluation_time = time.time()
