@@ -630,7 +630,8 @@ class MoleculeEnv(gym.Env):
                     is_final_temp=True
             edges_sub = random.sample(edges,k=edges_sub_len)
             graph_sub = nx.Graph(edges_sub)
-            graph_sub = max(nx.connected_component_subgraphs(graph_sub), key=len)
+            # graph_sub = max(nx.connected_component_subgraphs(graph_sub), key=len)
+            graph_sub = random.choice(list(nx.connected_component_subgraphs(graph_sub)))
             if is_final_temp: # when the subgraph the whole molecule, the expert show stop sign
                 node1 = random.randint(0,mol.GetNumAtoms()-1)
                 while True:
@@ -643,7 +644,8 @@ class MoleculeEnv(gym.Env):
                 ### random pick an edge from the subgraph, then remove it
                 edge_sample = random.sample(graph_sub.edges(),k=1)
                 graph_sub.remove_edges_from(edge_sample)
-                graph_sub = max(nx.connected_component_subgraphs(graph_sub), key=len)
+                # graph_sub = max(nx.connected_component_subgraphs(graph_sub), key=len)
+                graph_sub = random.choice(list(nx.connected_component_subgraphs(graph_sub)))
                 edge_sample = edge_sample[0] # get value
                 ### get action
                 if edge_sample[0] in graph_sub.nodes() and edge_sample[1] in graph_sub.nodes():
