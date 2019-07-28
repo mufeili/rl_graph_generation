@@ -182,7 +182,7 @@ def add_vtarg_and_adv(seg, gamma, lam):
     seg["tdlamret"] = seg["adv"] + seg["vpred"]
 
 def learn(args, env, evaluator, horizon, max_time_steps=0,
-          max_episodes=0, max_iters=int(5e7), max_seconds=0,
+          max_episodes=0, max_iters=0, max_seconds=0,
           init_lr=0.001, clip_param=0.2, entropy_coef=0.01, optim_epochs=8,
           optim_batchsize=32, gamma=1, lam=0.95, adam_epsilon=1e-5,
           schedule='linear', writer=None):
@@ -382,7 +382,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
             cur_lrmult = 1.0
         elif schedule == 'linear':
             if args['rl']:
-                cur_lrmult = max(1.0 - float(iters_so_far) / max_iters, 0)
+                cur_lrmult = max(1.0 - float(iters_so_far) / max_time_steps, 0)
             else:
                 cur_lrmult =  max(1.0 - float(timesteps_so_far) / max_time_steps, 0)
         else:
