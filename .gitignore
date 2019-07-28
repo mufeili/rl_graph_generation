@@ -5,3 +5,4 @@ rl-baselines/baselines/ppo1/molecule_gen/
 rl-baselines/baselines/ppo1/runs/
 gym-molecule/gym_molecule.egg-info
 dataset_summary
+generation_evaluation

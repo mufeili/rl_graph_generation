@@ -3,12 +3,17 @@
 from mpi4py import MPI
 from baselines.common import set_global_seeds
 from baselines import logger
+from rdkit import rdBase
 from tensorboardX import SummaryWriter
 import os
+import tensorflow as tf
 import time
 
 import gym
 from gym_molecule.envs.molecule import GraphEnv
+from eval import Evaluator
+
+rdBase.DisableLog('rdApp.error')
 
 def train(args, seed, writer=None):
     from baselines.ppo1 import pposgd_simple_gcn, gcn_policy
@@ -35,14 +40,18 @@ def train(args, seed, writer=None):
     print(env.observation_space)
     env.seed(workerseed)
 
-    pposgd_simple_gcn.learn(args, env,
-        max_time_steps=args['num_steps'],
-        horizon=256,
-        clip_param=0.2, entropy_coef=0.01,
-        optim_epochs=8, init_lr=args['lr'], optim_batchsize=32,
-        gamma=1, lam=0.95,
-        schedule='linear', writer=writer
-    )
+    evaluator = Evaluator('molecule_gen/', 'ZINC250K', env)
+    pi, var_list_pi = pposgd_simple_gcn.learn(args, env, evaluator,
+                                              max_time_steps=args['num_steps'],
+                                              horizon=256, clip_param=0.2, entropy_coef=0.01,
+                                              optim_epochs=8, init_lr=args['lr'], optim_batchsize=32,
+                                              gamma=1, lam=0.95, schedule='linear', writer=writer)
+    fname = './ckpt/' + args['name_full_load']
+    sess = tf.get_default_session()
+    saver = tf.train.Saver(var_list_pi)
+    saver.restore(sess, fname)
+    evaluator(pi, n_samples=10000, final=True)
+
     env.close()
 
 def arg_parser():
@@ -99,6 +108,7 @@ def molecule_arg_parser():
     parser.add_argument('--max_action', type=int, default=128) # default 0
     parser.add_argument('--min_action', type=int, default=20) # default 0
     parser.add_argument('--bn', type=int, default=1)
+    parser.add_argument('-pa', '--patience', type=int, default=1000)
 
     return parser
 

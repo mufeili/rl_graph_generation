@@ -89,10 +89,10 @@ class GCNPolicy(object):
     recurrent = False
     def __init__(self, name, ob_space, ac_space,args, kind='small', atom_type_num = None):
         with tf.variable_scope(name):
-            self._init(ob_space, ac_space, kind, atom_type_num,args)
+            self._init(ob_space, ac_space, kind, atom_type_num, args)
             self.scope = tf.get_variable_scope().name
 
-    def _init(self, ob_space, ac_space, kind, atom_type_num,args):
+    def _init(self, ob_space, ac_space, kind, atom_type_num, args):
         self.pdtype = MultiCatCategoricalPdType
         ### 0 Get input
         ob = {'adj': U.get_placeholder(name="adj", dtype=tf.float32, shape=[None,ob_space['adj'].shape[0],None,None]),
@@ -190,7 +190,7 @@ class GCNPolicy(object):
 
         ac_second_real = self.ac_real[:,1]
         mask_real = tf.one_hot(ac_second_real, depth=tf.shape(emb_node)[1], dtype=tf.bool,
-                               n_value=True, off_value=False)
+                               on_value=True, off_value=False)
         emb_second_real = tf.boolean_mask(emb_node, mask_real)
         emb_second_real = tf.expand_dims(emb_second_real, axis=1)
 

@@ -349,17 +349,26 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
     adam_d_step.sync()
     adam_d_final.sync()
 
+    def checkpoint():
+        fname = './ckpt/' + args['name_full']
+        saver = tf.train.Saver(var_list_pi)
+        saver.save(tf.get_default_session(), fname)
+        print('model saved!', fname)
+
+    best_loss = float('inf')
+    n_patient_rounds = 0
+    last_evaluation_time = time.time()
     level = 0
     ## start training
     while True:
         if max_time_steps and timesteps_so_far >= max_time_steps:
-            break
+            return pi, var_list_pi
         elif max_episodes and episodes_so_far >= max_episodes:
-            break
+            return pi, var_list_pi
         elif max_iters and iters_so_far >= max_iters:
-            break
+            return pi, var_list_pi
         elif max_seconds and time.time() - tstart >= max_seconds:
-            break
+            return pi, var_list_pi
 
         if schedule == 'constant':
             cur_lrmult = 1.0
@@ -379,7 +388,13 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
             optim_batchsize = optim_batchsize or ob_adj.shape[0]
 
         # inner training loop, train policy
+        all_pocliy_loss = []
+        all_teacher_forcing_loss = []
+        all_loss_d_step = []
+        all_loss_d_final = []
+        all_rl_loss = []
         for i_optim in range(optim_epochs):
+            policy_loss = 0
             loss_expert=0
             loss_expert_stop = 0
             g_expert=0
@@ -399,6 +414,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                 ob_expert, ac_expert = env.get_expert(optim_batchsize)
                 loss_expert, g_expert = lossandgrad_expert(ob_expert['adj'], ob_expert['node'], ac_expert, ac_expert)
                 loss_expert = np.mean(loss_expert)
+                policy_loss += loss_expert
 
             if args['rl']:
                 if iters_so_far >= args['rl_start'] and iters_so_far <= args['rl_end']:
@@ -433,6 +449,8 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
             # update generator
             # adam_pi.update(0.2*g_ppo+0.05*g_expert, init_lr * cur_lrmult)
             adam_pi.update(0.25 * g_expert, init_lr * cur_lrmult)
+            all_pocliy_loss.append(policy_loss)
+        mean_policy_loss = np.mean(all_pocliy_loss)
 
         if args['rl']:
             ## PPO val
@@ -499,10 +517,30 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                 saver = tf.train.Saver(var_list_pi)
                 saver.save(tf.get_default_session(), fname)
                 print('model saved!',fname)
+
+        if mean_policy_loss < best_loss:
+            checkpoint()
+            best_loss = mean_policy_loss
+            n_patient_rounds = 0
+            current_time = time.time()
+            if (evaluator is not None) and ((current_time - last_evaluation_time) > 1800):
+                evaluator(pi, n_samples=1024)
+                last_evaluation_time = time.time()
+        else:
+            n_patient_rounds += 1
+
+        if writer is not None:
+            writer.add_scalar('n_patient_rounds', n_patient_rounds, iters_so_far)
+
+        if (n_patient_rounds == args['patience']) and (level == (args['curriculum_num'] - 1)):
+            print('Early stop!')
+            return pi, var_list_pi
+
         iters_so_far += 1
         if (iters_so_far%args['curriculum_step'] == 0) and \
                 (iters_so_far//args['curriculum_step'] < args['curriculum_num']):
             level += 1
+            best_loss = float('inf')
 
 def flatten_lists(listoflists):
     return [el for list_ in listoflists for el in list_]

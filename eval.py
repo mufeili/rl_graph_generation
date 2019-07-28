@@ -1,6 +1,8 @@
 import numpy as np
 import os
+import tensorflow as tf
 import time
+from rdkit import rdBase
 from rdkit import Chem
 from rdkit.Chem.Descriptors import qed, MolLogP
 from rdkit.Chem.rdMolDescriptors import CalcExactMolWt
@@ -11,6 +13,8 @@ from utils import mkdir_p, get_valid_smiles, get_unique_smiles, \
     get_novel_smiles, get_FCD_distance, continuous_kldiv
 
 __all__ = ['Evaluator']
+
+rdBase.DisableLog('rdApp.error')
 
 class Evaluator(object):
     def __init__(self, root_dir, data, env, node_feat_name='h', writer=None, topk=3):
@@ -90,14 +94,17 @@ class Evaluator(object):
         assert n_samples > 1, 'If the set contains 1 sample only, a function will raise an Error'
 
         smiles = []
-        while len(smiles) < n_samples:
-            g_t = self.env.reset()
-            stop = False
-            while not stop:
-                h_t = g_t.ndata.pop(self.node_feat_name)
-                a_t, v_t = policy(g_t, h_t)
-                g_t, _, stop, info_t = self.env.step(a_t)
-            smiles.append(info_t['smile'])
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            while len(smiles) < n_samples:
+                print('Generating the molecule {:d}/{:d}'.format(len(smiles) + 1, n_samples))
+                ob_t = self.env.reset()
+                stop = False
+                while not stop:
+                    a_t, _, _ = policy.act(True, ob_t)
+                    ob_t, _, stop, info_t = self.env.step(a_t)
+                smiles.append(info_t['smile'])
         valid_smiles = get_valid_smiles(smiles)
         unique_smiles = get_unique_smiles(valid_smiles)
         novel_smiles = get_novel_smiles(unique_smiles, reference_smiles)
@@ -215,7 +222,11 @@ if __name__ == '__main__':
 
     evaluator = Evaluator('./', dataset, env)
     policy_args = {
-        'emb_size': 128
+        'emb_size': 128,
+        'bn': 1,
+        'gcn_aggregate': 'mean',
+        'layer_num_g': 3,
+        'stop_shift': -3
     }
     policy = GCNPolicy(name="pi",
                        ob_space=ob_space,
