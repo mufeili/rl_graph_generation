@@ -10,7 +10,6 @@ import tensorflow as tf
 import time
 
 import gym
-from gym_molecule.envs.molecule import GraphEnv
 from eval import Evaluator
 
 rdBase.DisableLog('rdApp.error')
@@ -18,6 +17,8 @@ rdBase.DisableLog('rdApp.error')
 def train(args, seed, writer=None):
     from baselines.ppo1 import pposgd_simple_gcn, gcn_policy
     import baselines.common.tf_util as U
+    import gym_molecule
+
     rank = MPI.COMM_WORLD.Get_rank()
     sess = U.single_threaded_session()
     sess.__enter__()
