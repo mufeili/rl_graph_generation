@@ -360,6 +360,9 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
         saver.save(tf.get_default_session(), fname)
         print('model saved!', fname)
 
+    if evaluator is not None:
+        evaluator(pi, n_samples=1024)
+
     best_loss = float('inf')
     n_patient_rounds = 0
     last_evaluation_time = time.time()

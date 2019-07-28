@@ -53,7 +53,7 @@ def train(args, seed, writer=None):
                                               gamma=1, lam=0.95, schedule='linear', writer=writer)
 
     if evaluator is not None:
-        fname = './ckpt/' + args['name_full_load']
+        fname = './ckpt/' + args['name_full']
         sess = tf.get_default_session()
         saver = tf.train.Saver(var_list_pi)
         saver.restore(sess, fname)
