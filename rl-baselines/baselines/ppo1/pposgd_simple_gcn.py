@@ -248,22 +248,23 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
 
     ac = tf.placeholder(dtype=tf.int64, shape=[None,4],name='ac_real')
 
-    ## PPO loss
-    kloldnew = old_pi.pd.kl(pi.pd)
-    ent = pi.pd.entropy()
-    meankl = tf.reduce_mean(kloldnew)
-    meanent = tf.reduce_mean(ent)
-    pol_entpen = (-entropy_coef) * meanent
-
     pi_logp = pi.pd.logp(ac)
-    ratio = tf.exp(pi.pd.logp(ac) - old_pi.pd.logp(ac)) # pnew / pold
-    surr1 = ratio * atarg # surrogate from conservative policy iteration
-    surr2 = tf.clip_by_value(ratio, 1.0 - clip_param, 1.0 + clip_param) * atarg #
-    pol_surr = - tf.reduce_mean(tf.minimum(surr1, surr2)) # PPO's pessimistic surrogate (L^CLIP)
-    vf_loss = tf.reduce_mean(tf.square(pi.vpred - ret))
-    total_loss = pol_surr + pol_entpen + vf_loss
-    losses = [pol_surr, pol_entpen, vf_loss, meankl, meanent]
-    loss_names = ["mean_ppo_loss", "mean_entropy_loss", "mean_vpred_loss", "mean_kl", "mean_entropy"]
+    ## PPO loss
+    if args['rl']:
+        kloldnew = old_pi.pd.kl(pi.pd)
+        ent = pi.pd.entropy()
+        meankl = tf.reduce_mean(kloldnew)
+        meanent = tf.reduce_mean(ent)
+        pol_entpen = (-entropy_coef) * meanent
+
+        ratio = tf.exp(pi.pd.logp(ac) - old_pi.pd.logp(ac))  # pnew / pold
+        surr1 = ratio * atarg  # surrogate from conservative policy iteration
+        surr2 = tf.clip_by_value(ratio, 1.0 - clip_param, 1.0 + clip_param) * atarg  #
+        pol_surr = - tf.reduce_mean(tf.minimum(surr1, surr2))  # PPO's pessimistic surrogate (L^CLIP)
+        vf_loss = tf.reduce_mean(tf.square(pi.vpred - ret))
+        total_loss = pol_surr + pol_entpen + vf_loss
+        losses = [pol_surr, pol_entpen, vf_loss, meankl, meanent]
+        loss_names = ["mean_ppo_loss", "mean_entropy_loss", "mean_vpred_loss", "mean_kl", "mean_entropy"]
 
     ## Expert loss
     loss_expert = -tf.reduce_mean(pi_logp)
@@ -294,7 +295,10 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
     var_list_d_final = [var for var in tf.global_variables() if 'd_final' in var.name]
 
     ## loss update function
-    lossandgrad_ppo = U.function([ob['adj'], ob['node'], ac, pi.ac_real, old_pi.ac_real, atarg, ret, lrmult], losses + [U.flatgrad(total_loss, var_list_pi)])
+    if args['rl']:
+        lossandgrad_ppo = U.function([ob['adj'], ob['node'], ac, pi.ac_real, old_pi.ac_real, atarg, ret, lrmult],
+                                     losses + [U.flatgrad(total_loss, var_list_pi)])
+
     lossandgrad_expert = U.function([ob['adj'], ob['node'], ac, pi.ac_real], [loss_expert, U.flatgrad(loss_expert, var_list_pi)])
     lossandgrad_expert_stop = U.function([ob['adj'], ob['node'], ac, pi.ac_real], [loss_expert, U.flatgrad(loss_expert, var_list_pi_stop)])
     lossandgrad_d_step = U.function([ob_real['adj'], ob_real['node'], ob_gen['adj'], ob_gen['node']], [loss_d_step, U.flatgrad(loss_d_step, var_list_d_step)])
@@ -307,10 +311,11 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
     adam_d_step = MpiAdam(var_list_d_step, epsilon=adam_epsilon)
     adam_d_final = MpiAdam(var_list_d_final, epsilon=adam_epsilon)
 
-    assign_old_eq_new = U.function([],[], updates=[tf.assign(oldv, newv)
-        for (oldv, newv) in zipsame(old_pi.get_variables(), pi.get_variables())])
-
-    compute_losses = U.function([ob['adj'], ob['node'], ac, pi.ac_real, old_pi.ac_real, atarg, ret, lrmult], losses)
+    if args['rl']:
+        assign_old_eq_new = U.function([], [], updates=[tf.assign(oldv, newv)
+                                                        for (oldv, newv) in
+                                                        zipsame(old_pi.get_variables(), pi.get_variables())])
+        compute_losses = U.function([ob['adj'], ob['node'], ac, pi.ac_real, old_pi.ac_real, atarg, ret, lrmult], losses)
 
     # Prepare for rollouts
     # ----------------------------------------
