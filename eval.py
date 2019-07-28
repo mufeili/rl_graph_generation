@@ -96,7 +96,6 @@ class Evaluator(object):
         smiles = []
 
         with tf.Session() as sess:
-            sess.run(tf.global_variables_initializer())
             while len(smiles) < n_samples:
                 print('Generating the molecule {:d}/{:d}'.format(len(smiles) + 1, n_samples))
                 ob_t = self.env.reset()

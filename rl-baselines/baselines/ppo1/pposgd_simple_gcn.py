@@ -361,7 +361,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
         print('model saved!', fname)
 
     if evaluator is not None:
-        evaluator(pi, n_samples=1024)
+        evaluator(pi, n_samples=128)
 
     best_loss = float('inf')
     n_patient_rounds = 0
@@ -371,7 +371,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
     if args['rl']:
         check_interval = 1800
     else:
-        check_interval = 360
+        check_interval = 60
 
     ## start training
     while True:
@@ -543,7 +543,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
             current_time = time.time()
 
             if (evaluator is not None) and ((current_time - last_evaluation_time) > check_interval):
-                evaluator(pi, n_samples=1024)
+                evaluator(pi, n_samples=128)
                 last_evaluation_time = time.time()
         else:
             n_patient_rounds += 1
