@@ -1,3 +1,4 @@
+import baselines.common.tf_util as U
 import numpy as np
 import os
 import tensorflow as tf
@@ -95,19 +96,20 @@ class Evaluator(object):
 
         smiles = []
 
-        with tf.get_default_session() as sess:
-            var_list_pi = policy.get_trainable_variables()
-            saver = tf.train.Saver(var_list_pi)
-            saver.restore(sess, checkpoint_path)
+        U.initialize()
+        sess = tf.get_default_session()
+        var_list_pi = policy.get_trainable_variables()
+        saver = tf.train.Saver(var_list_pi)
+        saver.restore(sess, checkpoint_path)
 
-            while len(smiles) < n_samples:
-                print('Generating the molecule {:d}/{:d}'.format(len(smiles) + 1, n_samples))
-                ob_t = self.env.reset()
-                stop = False
-                while not stop:
-                    a_t, _, _ = policy.act(True, ob_t)
-                    ob_t, _, stop, info_t = self.env.step(a_t)
-                smiles.append(info_t['smile'])
+        while len(smiles) < n_samples:
+            print('Generating the molecule {:d}/{:d}'.format(len(smiles) + 1, n_samples))
+            ob_t = self.env.reset()
+            stop = False
+            while not stop:
+                a_t, _, _ = policy.act(True, ob_t)
+                ob_t, _, stop, info_t = self.env.step(a_t)
+            smiles.append(info_t['smile'])
         valid_smiles = get_valid_smiles(smiles)
         unique_smiles = get_unique_smiles(valid_smiles)
         novel_smiles = get_novel_smiles(unique_smiles, reference_smiles)
