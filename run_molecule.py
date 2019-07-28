@@ -42,7 +42,7 @@ def train(args, seed, writer=None):
     env.seed(workerseed)
 
     if rank == 0:
-        evaluator = Evaluator('molecule_gen/', 'ZINC250K', env)
+        evaluator = Evaluator('molecule_gen/', 'ZINC250K', env, writer=writer)
     else:
         evaluator = None
 
