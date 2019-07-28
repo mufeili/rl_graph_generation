@@ -182,7 +182,7 @@ def add_vtarg_and_adv(seg, gamma, lam):
     seg["tdlamret"] = seg["adv"] + seg["vpred"]
 
 def learn(args, env, evaluator, horizon, max_time_steps=0,
-          max_episodes=0, max_iters=0, max_seconds=0,
+          max_episodes=0, max_iters=int(5e7), max_seconds=0,
           init_lr=0.001, clip_param=0.2, entropy_coef=0.01, optim_epochs=8,
           optim_batchsize=32, gamma=1, lam=0.95, adam_epsilon=1e-5,
           schedule='linear', writer=None):
@@ -381,7 +381,10 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
         if schedule == 'constant':
             cur_lrmult = 1.0
         elif schedule == 'linear':
-            cur_lrmult =  max(1.0 - float(timesteps_so_far) / max_time_steps, 0)
+            if args['rl']:
+                cur_lrmult = max(1.0 - float(iters_so_far) / max_iters, 0)
+            else:
+                cur_lrmult =  max(1.0 - float(timesteps_so_far) / max_time_steps, 0)
         else:
             raise NotImplementedError
 
@@ -423,6 +426,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                 loss_expert, g_expert = lossandgrad_expert(ob_expert['adj'], ob_expert['node'], ac_expert, ac_expert)
                 loss_expert = np.mean(loss_expert)
                 policy_loss += loss_expert
+                all_teacher_forcing_loss.append(loss_expert)
 
             if args['rl']:
                 if iters_so_far >= args['rl_start'] and iters_so_far <= args['rl_end']:
@@ -459,6 +463,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
             adam_pi.update(0.25 * g_expert, init_lr * cur_lrmult)
             all_pocliy_loss.append(policy_loss)
         mean_policy_loss = np.mean(all_pocliy_loss)
+        mean_expert_loss = np.mean(all_teacher_forcing_loss)
 
         if args['rl']:
             ## PPO val
@@ -476,7 +481,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                 writer.add_scalar("ev_tdlam_before", explained_variance(vpredbefore, tdlamret), iters_so_far)
 
         if writer is not None:
-            writer.add_scalar("loss_teacher_forcing", loss_expert, iters_so_far)
+            writer.add_scalar("loss_teacher_forcing",  mean_expert_loss, iters_so_far)
             writer.add_scalar("policy_loss", mean_policy_loss, iters_so_far)
             if args['has_d_step']:
                 writer.add_scalar("loss_d_step", loss_d_step, iters_so_far)
