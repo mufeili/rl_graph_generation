@@ -3,10 +3,10 @@ import baselines.common.tf_util as U
 import tensorflow as tf, numpy as np
 import time
 from baselines.common.mpi_adam import MpiAdam
-from baselines.common.mpi_moments import mpi_moments
 from mpi4py import MPI
 from collections import deque
 from baselines.ppo1.gcn_policy import discriminator_net, GCNPolicy
+from tensorflow.python import debug as tf_debug
 import copy
 
 
@@ -370,6 +370,11 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
     adam_d_step.sync()
     adam_d_final.sync()
 
+    # Todo: remove debug snippet
+    sess = tf.get_default_session()
+    sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+    sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
+
     checkpoint_path = './ckpt/' + args['name_full']
     def checkpoint():
         saver = tf.train.Saver(var_list_pi)
@@ -449,7 +454,9 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                     loss_d_final = 0
                     g_d_final = 0
 
-            pretrain_shift = 5
+            # Todo
+            # pretrain_shift = 5
+            pretrain_shift = 0
 
             ## Expert
             if iters_so_far >= args['expert_start'] and iters_so_far <= args['expert_end'] + pretrain_shift:
