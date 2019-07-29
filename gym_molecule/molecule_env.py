@@ -162,7 +162,7 @@ class MoleculeEnv(gym.Env):
     def level_up(self):
         self.level += 1
 
-    def seed(self,seed):
+    def seed(self, seed):
         np.random.seed(seed=seed)
         random.seed(seed)
 
@@ -221,12 +221,15 @@ class MoleculeEnv(gym.Env):
             terminate_condition = (self.mol.GetNumAtoms() >= self.max_atom-self.possible_atom_types.shape[0]-self.min_action or self.counter >= self.max_action or stop) and self.counter >= self.min_action
         else:
             terminate_condition = (self.mol.GetNumAtoms() >= self.max_atom-self.possible_atom_types.shape[0] or self.counter >= self.max_action or stop) and self.counter >= self.min_action
+
         if terminate_condition or self.force_final:
             # default reward
             reward_valid = 2
             reward_qed = 0
             reward_sa = 0
             reward_logp = 0
+            reward_logp_target = 0
+            reward_MW_target = 0
             reward_final = 0
             flag_steric_strain_filter = True
             flag_zinc_molecule_filter = True
@@ -250,44 +253,43 @@ class MoleculeEnv(gym.Env):
 
                 # property rewards
                 try:
-                    # 1. QED reward. Can have values [0, 1]. Higher the better
-                    qed_value = qed(final_mol)
-                    info['qed'] = qed_value
-                    reward_qed += qed_value * self.qed_ratio
-                    # 2. Synthetic accessibility reward. Values naively normalized to [0, 1]. Higher the better
-                    sa = -1 * calculateScore(final_mol)
-                    reward_sa += (sa + 10) / (10 - 1) * self.sa_ratio
-                    # 3. Logp reward. Higher the better
-                    # reward_logp += MolLogP(self.mol)/10 * self.logp_ratio
-                    logp_pen = reward_penalized_log_p(final_mol)
-                    info['logp_pen'] = logp_pen
-                    reward_logp += logp_pen * self.logp_ratio
-                    if self.reward_type == 'logppen':
-                        reward_final += reward_penalized_log_p(final_mol)/3
+                    if self.reward_type == 'logp_pen':
+                        logp_pen = reward_penalized_log_p(final_mol)
+                        info['logp_pen'] = logp_pen
+                        # reward_logp += logp_pen * self.logp_ratio
+                        reward_logp += logp_pen / 3
+                        reward_final += reward_logp
                     elif self.reward_type == 'logp_target':
                         # reward_final += reward_target(final_mol,target=self.reward_target,ratio=0.5,val_max=2,val_min=-2,func=MolLogP)
                         # reward_final += reward_target_logp(final_mol,target=self.reward_target)
-                        reward_final += reward_target_new(final_mol,MolLogP ,x_start=self.reward_target, x_mid=self.reward_target+0.25)
+                        reward_logp_target += reward_target_new(final_mol,MolLogP ,x_start=self.reward_target, x_mid=self.reward_target+0.25)
+                        reward_final += reward_logp_target
                     elif self.reward_type == 'qed':
+                        # 1. QED reward. Can have values [0, 1]. Higher the better
+                        qed_value = qed(final_mol)
+                        info['qed'] = qed_value
+                        reward_qed += qed_value * self.qed_ratio
                         reward_final += reward_qed*2
                     elif self.reward_type == 'qedsa':
+                        # 1. QED reward. Can have values [0, 1]. Higher the better
+                        qed_value = qed(final_mol)
+                        info['qed'] = qed_value
+                        reward_qed += qed_value * self.qed_ratio
+                        # 2. Synthetic accessibility reward. Values naively normalized to [0, 1]. Higher the better
+                        sa = -1 * calculateScore(final_mol)
+                        reward_sa += (sa + 10) / (10 - 1) * self.sa_ratio
                         reward_final += (reward_qed*1.5 + reward_sa*0.5)
-                    elif self.reward_type == 'qed_target':
-                        # reward_final += reward_target(final_mol,target=self.reward_target,ratio=0.1,val_max=2,val_min=-2,func=qed)
-                        reward_final += reward_target_qed(final_mol,target=self.reward_target)
                     elif self.reward_type == 'mw_target':
                         # reward_final += reward_target(final_mol,target=self.reward_target,ratio=40,val_max=2,val_min=-2,func=rdMolDescriptors.CalcExactMolWt)
                         # reward_final += reward_target_mw(final_mol,target=self.reward_target)
-                        reward_final += reward_target_new(final_mol, rdMolDescriptors.CalcExactMolWt,x_start=self.reward_target, x_mid=self.reward_target+25)
-
+                        reward_MW_target += reward_target_new(final_mol, rdMolDescriptors.CalcExactMolWt,x_start=self.reward_target, x_mid=self.reward_target+25)
+                        reward_final += reward_MW_target
 
                     elif self.reward_type == 'gan':
                         reward_final = 0
                     else:
                         print('reward error!')
                         reward_final = 0
-
-
 
                 except: # if any property reward error, reset all
                     print('reward error')
@@ -304,6 +306,11 @@ class MoleculeEnv(gym.Env):
                 info['reward_valid'] = reward_valid
             info['reward_qed'] = reward_qed
             info['reward_sa'] = reward_sa
+            info['reward_logp'] = reward_logp
+
+            info['reward_logp_target'] = reward_logp_target
+            info['reward_MW_target'] = reward_MW_target
+
             info['final_stat'] = reward_final
             info['reward'] = reward
             info['flag_steric_strain_filter'] = flag_steric_strain_filter
@@ -318,12 +325,13 @@ class MoleculeEnv(gym.Env):
 
         # get observation
         ob = self.get_observation()
+        info['reward_step'] = reward_step
 
         self.counter += 1
         if new:
             self.counter = 0
 
-        return ob,reward,new,info
+        return ob, reward, new, info
 
 
     def reset(self,smile=None):
