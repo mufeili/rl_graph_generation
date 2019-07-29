@@ -9,6 +9,7 @@ import tensorflow as tf
 import time
 
 import gym
+from copy import deepcopy
 from eval import Evaluator
 
 
@@ -40,7 +41,7 @@ def train(args, seed, writer=None):
     env.seed(workerseed)
 
     if rank == 0:
-        evaluator = Evaluator('molecule_gen/', 'ZINC250K', env, writer=writer)
+        evaluator = Evaluator('molecule_gen/', 'ZINC250K', deepcopy(env), writer=writer)
     else:
         evaluator = None
 
