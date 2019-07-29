@@ -520,7 +520,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
             writer.add_scalar('lr', init_lr * cur_lrmult, iters_so_far)
             writer.add_scalar("level", level, iters_so_far)
 
-        if args['rl']:
+        if args['rl'] and (iters_so_far >= args['rl_start']):
             lrlocal = (seg["ep_lens"], seg["ep_lens_valid"], seg["ep_rets"], seg["ep_rets_env"], seg["ep_rets_d_step"],
                        seg["ep_rets_d_final"], seg["ep_final_rew"], seg["ep_final_rew_stat"])  # local values
             listoflrpairs = MPI.COMM_WORLD.allgather(lrlocal)  # list of tuples
