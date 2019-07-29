@@ -543,7 +543,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                 writer.add_scalar("total_rl_loss", mean_total_rl_loss, iters_so_far)
                 writer.add_scalar("ppo surrogate", mean_ppo_surrogate, iters_so_far)
                 writer.add_scalar("entropy", mean_entropy, iters_so_far)
-                writer.add_scalar("value function loss", vf_loss, iters_so_far)
+                writer.add_scalar("value function loss", mean_vf_loss, iters_so_far)
                 writer.add_scalar("ev_tdlam_before", explained_variance(vpredbefore, tdlamret), iters_so_far)
                 writer.add_scalar("raw return env", np.mean(seg['ep_rets_env']), iters_so_far)
                 writer.add_scalar("raw return d step", np.mean(seg['ep_rets_d_step']), iters_so_far)
