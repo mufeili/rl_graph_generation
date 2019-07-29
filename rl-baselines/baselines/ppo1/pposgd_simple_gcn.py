@@ -563,18 +563,19 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                 if args['has_d_final']:
                     writer.add_scalar("loss_d_final", mean_d_final_loss, iters_so_far)
 
-        if (mean_policy_loss < best_loss) and (not args['rl'] or (iters_so_far > args['rl_start'])):
-            if MPI.COMM_WORLD.Get_rank() == 0:
-                checkpoint()
-            best_loss = mean_policy_loss
-            n_patient_rounds = 0
-            current_time = time.time()
+        if (not args['rl']) or (iters_so_far > args['rl_start']):
+            if mean_policy_loss < best_loss:
+                if MPI.COMM_WORLD.Get_rank() == 0:
+                    checkpoint()
+                best_loss = mean_policy_loss
+                n_patient_rounds = 0
+                current_time = time.time()
 
-            if (evaluator is not None) and ((current_time - last_evaluation_time) > check_interval):
-                evaluator(pi, n_samples=1024, checkpoint_path=checkpoint_path)
-                last_evaluation_time = time.time()
-        else:
-            n_patient_rounds += 1
+                if (evaluator is not None) and ((current_time - last_evaluation_time) > check_interval):
+                    evaluator(pi, n_samples=1024, checkpoint_path=checkpoint_path)
+                    last_evaluation_time = time.time()
+            else:
+                n_patient_rounds += 1
 
         if writer is not None:
             writer.add_scalar('n_patient_rounds', n_patient_rounds, iters_so_far)
