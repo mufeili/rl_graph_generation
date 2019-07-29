@@ -9,6 +9,11 @@ from baselines.ppo1.gcn_policy import discriminator_net, GCNPolicy
 from tensorflow.python import debug as tf_debug
 import copy
 
+def nonempty_mean(l):
+    if len(l) > 0:
+        return np.mean(l)
+    else:
+        return 0
 
 def trajectory_segment_generator(args, pi, env, horizon, stochastic, d_step_func, d_final_func):
     t = 0
@@ -370,11 +375,6 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
     adam_d_step.sync()
     adam_d_final.sync()
 
-    # Todo: remove debug snippet
-    sess = tf.get_default_session()
-    sess = tf_debug.LocalCLIDebugWrapperSession(sess)
-    sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
-
     checkpoint_path = './ckpt/' + args['name_full']
     def checkpoint():
         saver = tf.train.Saver(var_list_pi)
@@ -442,7 +442,6 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
 
         for i_optim in range(optim_epochs):
             policy_loss = 0
-            loss_expert = 0
             g_expert = 0
 
             if args['rl']:
@@ -511,14 +510,19 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
             else:
                 adam_pi.update(0.25 * g_expert, init_lr * cur_lrmult)
             all_pocliy_loss.append(policy_loss)
-        mean_policy_loss = np.mean(all_pocliy_loss)
-        mean_expert_loss = np.mean(all_teacher_forcing_loss)
-        mean_total_rl_loss = np.mean(all_total_rl_loss)
-        mean_ppo_surrogate = np.mean(all_ppo_surrogate)
-        mean_entropy = np.mean(all_entropy)
-        mean_vf_loss = np.mean(all_vpred_loss)
-        mean_d_step_loss = np.mean(all_loss_d_step)
-        mean_d_final_loss = np.mean(all_loss_d_final)
+        mean_policy_loss = nonempty_mean(all_pocliy_loss)
+
+        if args['rl']:
+            mean_expert_loss = nonempty_mean(all_teacher_forcing_loss)
+            mean_total_rl_loss = nonempty_mean(all_total_rl_loss)
+            mean_ppo_surrogate = nonempty_mean(all_ppo_surrogate)
+            mean_entropy = nonempty_mean(all_entropy)
+            mean_vf_loss = nonempty_mean(all_vpred_loss)
+
+        if args['has_d_step']:
+            mean_d_step_loss = nonempty_mean(all_loss_d_step)
+        if args['has_d_final']:
+            mean_d_final_loss = nonempty_mean(all_loss_d_final)
 
         if writer is not None:
             writer.add_scalar("loss_teacher_forcing",  mean_expert_loss, iters_so_far)
@@ -550,9 +554,9 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                 writer.add_scalar("entropy", mean_entropy, iters_so_far)
                 writer.add_scalar("value function loss", mean_vf_loss, iters_so_far)
                 writer.add_scalar("ev_tdlam_before", explained_variance(vpredbefore, tdlamret), iters_so_far)
-                writer.add_scalar("raw return env", np.mean(seg['ep_rets_env']), iters_so_far)
-                writer.add_scalar("raw return d step", np.mean(seg['ep_rets_d_step']), iters_so_far)
-                writer.add_scalar("raw return d final", np.mean(seg['ep_rets_d_final']), iters_so_far)
+                writer.add_scalar("raw return env", nonempty_mean(seg['ep_rets_env']), iters_so_far)
+                writer.add_scalar("raw return d step", nonempty_mean(seg['ep_rets_d_step']), iters_so_far)
+                writer.add_scalar("raw return d final", nonempty_mean(seg['ep_rets_d_final']), iters_so_far)
 
                 if args['has_d_step']:
                     writer.add_scalar("loss_d_step", mean_d_step_loss, iters_so_far)
