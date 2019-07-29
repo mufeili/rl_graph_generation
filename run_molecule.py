@@ -39,14 +39,10 @@ def train(args, seed, writer=None):
     print(env.observation_space)
     env.seed(workerseed)
 
-    # Todo
-    """
     if rank == 0:
         evaluator = Evaluator('molecule_gen/', 'ZINC250K', env, writer=writer)
     else:
         evaluator = None
-    """
-    evaluator = None
 
     pi, var_list_pi = pposgd_simple_gcn.learn(args, env, evaluator,
                                               max_time_steps=args['num_steps'],
