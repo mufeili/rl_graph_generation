@@ -6,7 +6,7 @@ import networkx as nx
 import numpy as np
 import os
 import random
-from rdkit import Chem
+from rdkit import Chem, rdBase
 from rdkit.Chem import AllChem
 from rdkit.Chem.Descriptors import qed, MolLogP
 from rdkit.Chem import rdMolDescriptors
@@ -14,6 +14,8 @@ from rdkit.Chem.FilterCatalog import FilterCatalogParams, FilterCatalog
 from gym_molecule.sascorer import calculateScore
 from gym_molecule.utils import gdb_dataset,mol_to_nx
 
+
+rdBase.DisableLog('rdApp.error')
 
 # TODO(Bowen): check, esp if input is not radical
 def convert_radical_electrons_to_hydrogens(mol):

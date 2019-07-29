@@ -563,7 +563,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                 if args['has_d_final']:
                     writer.add_scalar("loss_d_final", mean_d_final_loss, iters_so_far)
 
-        if mean_policy_loss < best_loss:
+        if (mean_policy_loss < best_loss) and (not args['rl'] or (iters_so_far > args['rl_start'])):
             if MPI.COMM_WORLD.Get_rank() == 0:
                 checkpoint()
             best_loss = mean_policy_loss

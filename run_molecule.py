@@ -3,7 +3,6 @@
 from mpi4py import MPI
 from baselines.common import set_global_seeds
 from baselines import logger
-from rdkit import rdBase
 from tensorboardX import SummaryWriter
 import os
 import tensorflow as tf
@@ -12,7 +11,6 @@ import time
 import gym
 from eval import Evaluator
 
-rdBase.DisableLog('rdApp.error')
 
 def train(args, seed, writer=None):
     from baselines.ppo1 import pposgd_simple_gcn, gcn_policy
