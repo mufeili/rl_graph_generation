@@ -383,17 +383,14 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
 
     if evaluator is not None:
         checkpoint()
-        evaluator(pi, n_samples=1024, checkpoint_path=checkpoint_path)
+        evaluator(pi, n_samples=256, checkpoint_path=checkpoint_path)
 
     best_loss = float('inf')
     n_patient_rounds = 0
     last_evaluation_time = time.time()
     level = 0
 
-    if args['rl']:
-        check_interval = 1800
-    else:
-        check_interval = 300
+    check_interval = 300
 
     ## start training
     while True:
@@ -416,7 +413,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
         else:
             raise NotImplementedError
 
-        if args['rl']:
+        if args['rl'] and iters_so_far >= args['rl_start']:
             seg = seg_gen.__next__()
             add_vtarg_and_adv(seg, gamma, lam)
             ob_adj, ob_node, ac, atarg, tdlamret = seg["ob_adj"], seg["ob_node"], seg["ac"], seg["adv"], seg["tdlamret"]
@@ -441,17 +438,10 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                 all_loss_d_final = []
 
         for i_optim in range(optim_epochs):
-            policy_loss = 0
             g_expert = 0
 
             if args['rl']:
                 g_ppo = 0
-                if args['has_d_step']:
-                    loss_d_step = 0
-                    g_d_step = 0
-                if args['has_d_final']:
-                    loss_d_final = 0
-                    g_d_final = 0
 
             pretrain_shift = 5
 
@@ -462,7 +452,6 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                 ob_expert, ac_expert = env.get_expert(optim_batchsize)
                 loss_expert, g_expert = lossandgrad_expert(ob_expert['adj'], ob_expert['node'], ac_expert, ac_expert)
                 loss_expert = np.mean(loss_expert)
-                policy_loss += loss_expert
                 all_teacher_forcing_loss.append(loss_expert)
 
             if args['rl']:
@@ -475,7 +464,6 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                                                             batch["ac"], batch["atarg"], batch["vtarg"], cur_lrmult)
                         pol_surr, pol_entpen, vf_loss, meankl, meanent = newlosses
                         total_loss = pol_surr + pol_entpen + vf_loss
-                        policy_loss += total_loss
                         all_total_rl_loss.append(total_loss)
                         all_ppo_surrogate.append(pol_surr)
                         all_entropy.append(meanent)
@@ -506,8 +494,10 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
 
             # update generator
             if args['rl']:
+                policy_loss = 0.2 * total_loss + 0.05 * loss_expert
                 adam_pi.update(0.2 * g_ppo + 0.05 * g_expert, init_lr * cur_lrmult)
             else:
+                policy_loss = 0.25 * loss_expert
                 adam_pi.update(0.25 * g_expert, init_lr * cur_lrmult)
             all_pocliy_loss.append(policy_loss)
         mean_policy_loss = nonempty_mean(all_pocliy_loss)
@@ -572,7 +562,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                 current_time = time.time()
 
                 if (evaluator is not None) and ((current_time - last_evaluation_time) > check_interval):
-                    evaluator(pi, n_samples=1024, checkpoint_path=checkpoint_path)
+                    evaluator(pi, n_samples=256, checkpoint_path=checkpoint_path)
                     last_evaluation_time = time.time()
             else:
                 n_patient_rounds += 1
