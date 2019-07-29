@@ -493,7 +493,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                         all_loss_d_final.append(loss_d_final)
 
             # update generator
-            if args['rl']:
+            if args['rl'] and (iters_so_far >= args['rl_start'] + pretrain_shift):
                 policy_loss = 0.2 * total_loss + 0.05 * loss_expert
                 adam_pi.update(0.2 * g_ppo + 0.05 * g_expert, init_lr * cur_lrmult)
             else:
