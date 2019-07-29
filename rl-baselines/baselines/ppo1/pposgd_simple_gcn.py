@@ -545,6 +545,9 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                 writer.add_scalar("entropy", mean_entropy, iters_so_far)
                 writer.add_scalar("value function loss", vf_loss, iters_so_far)
                 writer.add_scalar("ev_tdlam_before", explained_variance(vpredbefore, tdlamret), iters_so_far)
+                writer.add_scalar("raw return env", np.mean(seg['ep_rets_env']), iters_so_far)
+                writer.add_scalar("raw return d step", np.mean(seg['ep_rets_d_step']), iters_so_far)
+                writer.add_scalar("raw return d final", np.mean(seg['ep_rets_d_final']), iters_so_far)
 
                 writer.add_scalar("EpThisIter", len(lens), iters_so_far)
                 writer.add_scalar("EpisodesSoFar", episodes_so_far, iters_so_far)
