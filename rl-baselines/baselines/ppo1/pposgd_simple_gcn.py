@@ -449,7 +449,10 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                     loss_d_final = 0
                     g_d_final = 0
 
-            pretrain_shift = 5
+            # Todo
+            # pretrain_shift = 5
+            pretrain_shift = 0
+
             ## Expert
             if iters_so_far >= args['expert_start'] and iters_so_far <= args['expert_end'] + pretrain_shift:
                 ## Expert train
@@ -518,7 +521,6 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
             writer.add_scalar("loss_teacher_forcing",  mean_expert_loss, iters_so_far)
             writer.add_scalar("policy_loss", mean_policy_loss, iters_so_far)
             writer.add_scalar('lr', init_lr * cur_lrmult, iters_so_far)
-            writer.add_scalar("TimeElapsed", time.time() - tstart, iters_so_far)
             writer.add_scalar("level", level, iters_so_far)
 
         if args['rl']:
@@ -549,22 +551,10 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                 writer.add_scalar("raw return d step", np.mean(seg['ep_rets_d_step']), iters_so_far)
                 writer.add_scalar("raw return d final", np.mean(seg['ep_rets_d_final']), iters_so_far)
 
-                writer.add_scalar("EpThisIter", len(lens), iters_so_far)
-                writer.add_scalar("EpisodesSoFar", episodes_so_far, iters_so_far)
-                writer.add_scalar("TimestepsSoFar", timesteps_so_far, iters_so_far)
-                writer.add_scalar("EpLenMean", np.mean(lenbuffer), iters_so_far)
-                writer.add_scalar("EpLenValidMean", np.mean(lenbuffer_valid), iters_so_far)
-                writer.add_scalar("EpRewMean", np.mean(rewbuffer), iters_so_far)
-                writer.add_scalar("EpRewEnvMean", np.mean(rewbuffer_env), iters_so_far)
-                writer.add_scalar("EpRewFinalMean", np.mean(rewbuffer_final), iters_so_far)
-                writer.add_scalar("EpRewFinalStatMean", np.mean(rewbuffer_final_stat), iters_so_far)
-
                 if args['has_d_step']:
                     writer.add_scalar("loss_d_step", mean_d_step_loss, iters_so_far)
-                    writer.add_scalar("EpRewDStepMean", np.mean(rewbuffer_d_step), iters_so_far)
                 if args['has_d_final']:
                     writer.add_scalar("loss_d_final", mean_d_final_loss, iters_so_far)
-                    writer.add_scalar("EpRewDFinalMean", np.mean(rewbuffer_d_final), iters_so_far)
 
         if mean_policy_loss < best_loss:
             if MPI.COMM_WORLD.Get_rank() == 0:
@@ -587,6 +577,8 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
             return pi, var_list_pi
 
         iters_so_far += 1
+        # Todo
+        print('iters_so_far: ', iters_so_far)
         if (iters_so_far%args['curriculum_step'] == 0) and \
                 (iters_so_far//args['curriculum_step'] < args['curriculum_num']):
             level += 1
