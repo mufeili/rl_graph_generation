@@ -449,9 +449,7 @@ def learn(args, env, evaluator, horizon, max_time_steps=0,
                     loss_d_final = 0
                     g_d_final = 0
 
-            # Todo
-            # pretrain_shift = 5
-            pretrain_shift = 0
+            pretrain_shift = 5
 
             ## Expert
             if iters_so_far >= args['expert_start'] and iters_so_far <= args['expert_end'] + pretrain_shift:
